@@ -38,12 +38,7 @@ Strictly adheres to institutional SMC principles:
 - Visual overlays rendered over the chart image: Entry, Stop Loss, TP1, TP2, and SMC grid toggle.
 - 9 Key Metric Cards: Asset, Timeframe, Bias, Action, Confidence (%), Entry, SL, TP1, TP2, and RRR.
 
-### 4. Interactive Demo & Onboarding Video Section
-- Positioned in every core view inside a Chocolate Brown container titled:
-  `🎥 How It Works: Watch 60s Demo`.
-- Custom styled HTML5 video player modal with fallback play button, progress timeline, and step-by-step interactive workflow walkthrough.
-
-### 5. Automated MT5 Webhook Bridge & Downloadable MQL5 EA
+### 4. Automated MT5 Webhook Bridge & Downloadable MQL5 EA
 - **Signal Storage:** Every analyzed signal is saved to PostgreSQL / SQLite via Prisma ORM.
 - **MQL5 EA Download:** 1-click download of `ApexVisionAI_Copilot.mq5`, pre-configured with your webhook URL, secret token, and automated lot sizing.
 - **Copy Webhook API Endpoint:** Standardized JSON payload receiver at `/api/mt5/webhook`.
@@ -80,7 +75,6 @@ Strictly adheres to institutional SMC principles:
 │   ├── SignalDashboard.tsx          # Split layout, metrics cards, SMC confluences
 │   ├── InteractiveChartOverlay.tsx  # Dynamic price line annotations on chart
 │   ├── SignalHistory.tsx            # Historical signals table with filters
-│   ├── VideoDemoSection.tsx         # 🎥 How It Works: Watch 60s Demo & modal
 │   ├── ExecutionModal.tsx           # MT5 Bridge, Webhook copy, MQL5 EA download
 │   └── TierModal.tsx                # Subscription & billing modal (Free / Pro / VIP)
 ├── lib/
