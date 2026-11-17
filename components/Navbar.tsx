@@ -1,11 +1,7 @@
 'use client';
 
 import React from 'react';
-import { Activity, PlayCircle, Sparkles } from 'lucide-react';
-
-interface NavbarProps {
-  onOpenDemo: () => void;
-}
+import { Activity, Sparkles } from 'lucide-react';
 
 const MARKETS = [
   { symbol: 'XAUUSD', price: '2,342.80', change: '+0.42%' },
@@ -14,7 +10,7 @@ const MARKETS = [
   { symbol: 'BTCUSD', price: '67,420.00', change: '−0.16%' },
 ];
 
-export default function Navbar({ onOpenDemo }: NavbarProps) {
+export default function Navbar() {
   return (
     <header className="sticky top-0 z-40 border-b border-[#D4A373]/25 bg-[#0B0B0B]/95 backdrop-blur-md">
       <div className="mx-auto flex min-h-[68px] max-w-[1440px] items-center justify-between gap-4 px-4 sm:px-6">
@@ -38,10 +34,6 @@ export default function Navbar({ onOpenDemo }: NavbarProps) {
         </div>
 
         <div className="flex shrink-0 items-center gap-2 sm:gap-3">
-          <button type="button" onClick={onOpenDemo} className="btn-bronze-gold flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-semibold">
-            <PlayCircle className="h-4 w-4 text-[#D4A373]" />
-            <span className="hidden sm:inline">Watch Demo</span>
-          </button>
           <div className="flex items-center gap-1.5 rounded-lg border border-[#10B981]/30 bg-[#10B981]/10 px-2.5 py-2 text-[10px] font-mono text-[#10B981] sm:text-xs">
             <Activity className="h-3.5 w-3.5" />
             <span className="hidden sm:inline">MT5 Bridge:</span> Ready

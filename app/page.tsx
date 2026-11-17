@@ -2,7 +2,6 @@
 
 import React, { useState } from 'react';
 import Navbar from '@/components/Navbar';
-import VideoDemoSection from '@/components/VideoDemoSection';
 import ChartUpload, { ChartScanOptions } from '@/components/ChartUpload';
 import SignalDashboard from '@/components/SignalDashboard';
 import { SMCSignalOutput, TradeAnalysis } from '@/lib/types';
@@ -13,7 +12,6 @@ export default function HomePage() {
   const [activeChartImage, setActiveChartImage] = useState('');
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
-  const [isDemoOpen, setIsDemoOpen] = useState(false);
 
   const handleAnalyzeChart = async (image: string, options: ChartScanOptions) => {
     setIsAnalyzing(true);
@@ -45,7 +43,7 @@ export default function HomePage() {
 
   return (
     <div className="min-h-screen bg-[#0B0B0B] text-[#F5EBE6]">
-      <Navbar onOpenDemo={() => setIsDemoOpen(true)} />
+      <Navbar />
       <main className="mx-auto max-w-[1440px] space-y-8 px-4 py-6 sm:px-6 lg:py-8">
         <section className="flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
           <div>
@@ -108,12 +106,6 @@ export default function HomePage() {
             )}
           </div>
         </section>
-
-        <VideoDemoSection
-          isOpenModal={isDemoOpen}
-          onCloseModal={() => setIsDemoOpen(false)}
-          onOpenModal={() => setIsDemoOpen(true)}
-        />
       </main>
       <footer className="mt-12 border-t border-[#D4A373]/15 px-4 py-5 text-center text-[10px] text-[#A8968D]">
         APEX VISION AI <span className="mx-1.5 text-[#D4A373]">·</span> Chart analysis is informational and not financial advice.
