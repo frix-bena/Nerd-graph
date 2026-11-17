@@ -2,7 +2,6 @@
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  ArrowDown,
   ClipboardPaste,
   Image as ImageIcon,
   Loader2,
@@ -83,43 +82,27 @@ export default function ChartUpload({ onAnalyze, isLoading }: ChartUploadProps) 
   };
 
   return (
-    <div className="saas-card rounded-2xl p-5 sm:p-6 space-y-5">
+    <div className="chocolate-card rounded-2xl p-4 sm:p-5 space-y-5">
       <div>
-        <p className="text-base font-extrabold text-[#0F172A]">Chart input</p>
-        <p className="mt-1 text-xs text-[#475569]">Upload, drop, or paste a chart screenshot.</p>
+        <p className="text-sm font-bold text-[#F5EBE6]">Chart input</p>
+        <p className="mt-1 text-xs text-[#A8968D]">Upload, drop, or paste a chart screenshot.</p>
       </div>
 
-      <div className="flex flex-wrap gap-3">
-        <div className="flex flex-wrap items-center gap-1.5">
-          <span className="mr-1 text-[10px] font-bold uppercase tracking-wider text-[#475569]">Asset</span>
+      <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-[10px] uppercase tracking-wider text-[#A8968D]">Asset</span>
           {ASSETS.map((value) => (
-            <button
-              key={value}
-              type="button"
-              onClick={() => setAsset(value)}
-              className={`rounded-full border px-2.5 py-1 text-[11px] font-mono font-semibold transition ${
-                asset === value
-                  ? 'border-[#1D4ED8] bg-[#EFF6FF] text-[#1D4ED8]'
-                  : 'border-[#E2E8F0] bg-[#F8FAFC] text-[#475569] hover:border-[#93C5FD] hover:text-[#0F172A]'
-              }`}
-            >
+            <button key={value} type="button" onClick={() => setAsset(value)}
+              className={`rounded-full border px-2.5 py-1 text-[11px] font-mono transition ${asset === value ? 'border-[#D4A373] bg-[#3D2314] text-[#F5EBE6]' : 'border-[#D4A373]/20 bg-[#150C07] text-[#A8968D] hover:border-[#D4A373]/50'}`}>
               {value}
             </button>
           ))}
         </div>
-        <div className="flex flex-wrap items-center gap-1.5 sm:ml-auto">
-          <span className="mr-1 text-[10px] font-bold uppercase tracking-wider text-[#475569]">Timeframe</span>
+        <div className="flex flex-wrap items-center gap-2 sm:ml-auto">
+          <span className="text-[10px] uppercase tracking-wider text-[#A8968D]">Timeframe</span>
           {TIMEFRAMES.map((value) => (
-            <button
-              key={value}
-              type="button"
-              onClick={() => setTimeframe(value)}
-              className={`rounded-full border px-2.5 py-1 text-[11px] font-mono font-semibold transition ${
-                timeframe === value
-                  ? 'border-[#1D4ED8] bg-[#EFF6FF] text-[#1D4ED8]'
-                  : 'border-[#E2E8F0] bg-[#F8FAFC] text-[#475569] hover:border-[#93C5FD] hover:text-[#0F172A]'
-              }`}
-            >
+            <button key={value} type="button" onClick={() => setTimeframe(value)}
+              className={`rounded-full border px-2.5 py-1 text-[11px] font-mono transition ${timeframe === value ? 'border-[#D4A373] bg-[#3D2314] text-[#F5EBE6]' : 'border-[#D4A373]/20 bg-[#150C07] text-[#A8968D] hover:border-[#D4A373]/50'}`}>
               {value}
             </button>
           ))}
@@ -127,133 +110,55 @@ export default function ChartUpload({ onAnalyze, isLoading }: ChartUploadProps) 
       </div>
 
       {preview ? (
-        <div className="overflow-hidden rounded-xl border border-[#CBD5E1] bg-[#F8FAFC]">
-          <div className="flex items-center justify-between border-b border-[#E2E8F0] bg-white px-3.5 py-2.5">
-            <span className="flex items-center gap-2 text-xs font-semibold text-[#0F172A]">
-              <ImageIcon className="h-3.5 w-3.5 text-[#1D4ED8]" /> Preview · {asset} · {timeframe}
-            </span>
-            <button
-              type="button"
-              onClick={() => {
-                setPreview(null);
-                setSelectedSample(null);
-              }}
-              className="text-xs font-semibold text-[#EF4444] hover:underline"
-            >
-              Remove
-            </button>
+        <div className="overflow-hidden rounded-xl border border-[#D4A373]/25 bg-[#0B0B0B]">
+          <div className="flex items-center justify-between border-b border-[#D4A373]/15 px-3 py-2">
+            <span className="flex items-center gap-2 text-xs text-[#A8968D]"><ImageIcon className="h-3.5 w-3.5 text-[#D4A373]" /> Preview · {asset} · {timeframe}</span>
+            <button type="button" onClick={() => { setPreview(null); setSelectedSample(null); }} className="text-xs text-[#D4A373] hover:text-[#F5EBE6]">Remove</button>
           </div>
-          <img
-            src={preview}
-            alt={`${asset} ${timeframe} chart preview`}
-            className="max-h-64 w-full object-contain bg-[#F8FAFC]"
-          />
+          <img src={preview} alt={`${asset} ${timeframe} chart preview`} className="max-h-64 w-full object-contain" />
         </div>
       ) : (
-        <button
-          type="button"
-          onClick={() => fileInputRef.current?.click()}
-          onDragOver={(event) => {
-            event.preventDefault();
-            setIsDragOver(true);
-          }}
+        <button type="button" onClick={() => fileInputRef.current?.click()}
+          onDragOver={(event) => { event.preventDefault(); setIsDragOver(true); }}
           onDragLeave={() => setIsDragOver(false)}
-          onDrop={(event) => {
-            event.preventDefault();
-            setIsDragOver(false);
-            const file = event.dataTransfer.files[0];
-            if (file) loadFile(file);
-          }}
-          className={`flex min-h-52 w-full flex-col items-center justify-center rounded-xl border-2 border-dashed px-5 py-8 text-center transition ${
-            isDragOver
-              ? 'border-[#1D4ED8] bg-[#EFF6FF]'
-              : 'border-[#CBD5E1] bg-[#F8FAFC] hover:border-[#1D4ED8] hover:bg-[#EFF6FF]/50'
-          }`}
-        >
-          <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-xl border border-[#BFDBFE] bg-[#EFF6FF] text-[#1D4ED8]">
-            <UploadCloud className="h-6 w-6" />
-          </div>
-          <span className="text-sm font-bold text-[#0F172A]">Drop your chart here or browse</span>
-          <span className="mt-1 text-xs text-[#475569]">PNG, JPG, WEBP · up to 10 MB</span>
-          <span className="mt-3 inline-flex items-center gap-1.5 rounded-full border border-[#BFDBFE] bg-[#EFF6FF] px-3 py-1 text-[11px] font-medium text-[#0F172A]">
-            <ClipboardPaste className="h-3 w-3 text-[#1D4ED8]" /> Paste image with Ctrl+V
+          onDrop={(event) => { event.preventDefault(); setIsDragOver(false); const file = event.dataTransfer.files[0]; if (file) loadFile(file); }}
+          className={`flex min-h-52 w-full flex-col items-center justify-center rounded-xl border border-dashed px-5 py-8 text-center transition ${isDragOver ? 'border-[#D4A373] bg-[#3D2314]/40' : 'border-[#D4A373]/30 bg-[#150C07]/70 hover:border-[#D4A373]/60'}`}>
+          <UploadCloud className="mb-3 h-8 w-8 text-[#D4A373]" />
+          <span className="text-sm font-semibold text-[#F5EBE6]">Drop your chart here or browse</span>
+          <span className="mt-1 text-xs text-[#A8968D]">PNG, JPG, WEBP · up to 10 MB</span>
+          <span className="mt-3 inline-flex items-center gap-1.5 rounded-full border border-[#D4A373]/20 bg-[#1E120C] px-2.5 py-1 text-[10px] text-[#A8968D]">
+            <ClipboardPaste className="h-3 w-3 text-[#D4A373]" /> Paste image with Ctrl+V
           </span>
         </button>
       )}
-      <input
-        ref={fileInputRef}
-        type="file"
-        accept="image/png,image/jpeg,image/webp"
-        className="hidden"
-        onChange={(event) => {
-          const file = event.target.files?.[0];
-          if (file) loadFile(file);
-          event.currentTarget.value = '';
-        }}
-      />
+      <input ref={fileInputRef} type="file" accept="image/png,image/jpeg,image/webp" className="hidden"
+        onChange={(event) => { const file = event.target.files?.[0]; if (file) loadFile(file); event.currentTarget.value = ''; }} />
 
-      {error && (
-        <p role="alert" className="text-xs font-medium text-[#EF4444]">
-          {error}
-        </p>
-      )}
+      {error && <p role="alert" className="text-xs text-[#EF4444]">{error}</p>}
 
-      <div className="rounded-xl border border-[#E2E8F0] bg-[#F8FAFC] p-3.5">
-        <div className="mb-2.5 flex items-center justify-between gap-2">
+      <div className="rounded-xl border border-[#D4A373]/20 bg-[#150C07]/50 p-3">
+        <div className="mb-2 flex items-center justify-between gap-2">
           <div>
-            <p className="text-xs font-bold text-[#0F172A]">Try a sample chart</p>
-            <p className="text-[11px] text-[#475569]">Load a candlestick setup without an upload.</p>
+            <p className="text-xs font-semibold text-[#F5EBE6]">Try a sample chart</p>
+            <p className="text-[10px] text-[#A8968D]">Load a candlestick setup without an upload.</p>
           </div>
-          {selectedSample && (
-            <span className="rounded-full border border-[#BFDBFE] bg-[#EFF6FF] px-2.5 py-0.5 text-[10px] font-bold text-[#1D4ED8]">
-              Sample loaded
-            </span>
-          )}
+          {selectedSample && <span className="text-[10px] text-[#10B981]">Sample loaded</span>}
         </div>
         <div className="flex flex-wrap gap-2">
           {SAMPLE_CHARTS.map((sample) => (
-            <button
-              key={sample.id}
-              type="button"
-              onClick={() => selectSample(sample)}
-              className={`rounded-lg border px-2.5 py-1.5 text-[11px] font-mono font-semibold transition ${
-                selectedSample?.id === sample.id
-                  ? 'border-[#1D4ED8] bg-[#EFF6FF] text-[#1D4ED8]'
-                  : 'border-[#E2E8F0] bg-white text-[#475569] hover:border-[#93C5FD] hover:text-[#0F172A]'
-              }`}
-            >
+            <button key={sample.id} type="button" onClick={() => selectSample(sample)}
+              className={`rounded-lg border px-2.5 py-1.5 text-[10px] font-mono transition ${selectedSample?.id === sample.id ? 'border-[#D4A373] bg-[#3D2314] text-[#F5EBE6]' : 'border-[#D4A373]/20 bg-[#1E120C] text-[#A8968D] hover:text-[#D4A373]'}`}>
               {sample.asset} · {sample.timeframe.toUpperCase()}
             </button>
           ))}
         </div>
       </div>
 
-      <div className="space-y-2 text-center">
-        <button
-          type="button"
-          onClick={scan}
-          disabled={!preview || isLoading}
-          className="btn-royal-primary flex w-full items-center justify-center gap-2 rounded-[8px] px-4 py-3.5 text-sm font-bold text-white disabled:cursor-not-allowed disabled:opacity-50"
-        >
-          {isLoading ? (
-            <Loader2 className="h-4 w-4 animate-spin text-white" />
-          ) : (
-            <ScanLine className="h-4 w-4 text-white" />
-          )}
-          <span>{isLoading ? 'Scanning chart…' : 'Run SMC Vision Scan'}</span>
-          {!isLoading && <ArrowDown className="h-4 w-4 text-white" />}
-        </button>
-
-        {!preview && SAMPLE_CHARTS[0] && (
-          <button
-            type="button"
-            onClick={() => selectSample(SAMPLE_CHARTS[0])}
-            className="inline-block text-xs font-semibold text-[#1D4ED8] underline decoration-[#1D4ED8] underline-offset-4 hover:text-[#1E40AF]"
-          >
-            Load default XAU/USD sample chart
-          </button>
-        )}
-      </div>
+      <button type="button" onClick={scan} disabled={!preview || isLoading}
+        className="btn-bronze-gold flex w-full items-center justify-center gap-2 rounded-xl px-4 py-3 text-sm font-bold disabled:cursor-not-allowed disabled:opacity-50">
+        {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <ScanLine className="h-4 w-4 text-[#D4A373]" />}
+        {isLoading ? 'Scanning chart…' : 'Run SMC Vision Scan'}
+      </button>
     </div>
   );
 }
