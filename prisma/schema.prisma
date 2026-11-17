@@ -1,0 +1,68 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String        @id @default(cuid())
+  email        String        @unique
+  name         String?
+  tier         String        @default("PRO") // FREE, PRO, INSTITUTIONAL
+  credits      Int           @default(50)
+  mt5Account   String?       @default("8920194")
+  mt5Server    String?       @default("MetaQuotes-Demo")
+  mt5Connected Boolean       @default(true)
+  webhookToken String?       @default("apex_live_sec_9934af89")
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  signals      Signal[]
+  executions   ExecutionLog[]
+}
+
+model Signal {
+  id                    String         @id @default(cuid())
+  userId                String?
+  user                  User?          @relation(fields: [userId], references: [id])
+  asset                 String         // e.g. XAUUSD, EURUSD, BTCUSDT, US30
+  timeframe             String         // e.g. 15m, 1h, 4h, Daily
+  marketBias            String         // BULLISH | BEARISH | NEUTRAL
+  tradeRecommendation   String         // BUY | SELL | WAIT
+  confidenceScore       Float          // e.g. 92.5
+  entryPrice            Float
+  stopLoss              Float
+  takeProfit1           Float
+  takeProfit2           Float
+  riskRewardRatio       String         // e.g. 1:3.4
+  keyConfluences        String         // JSON array string
+  invalidationCondition String
+  analysisSummary       String
+  chartImageUrl         String?
+  rawVisionOutput       String?
+  status                String         @default("ACTIVE") // ACTIVE, HIT_TP1, HIT_TP2, STOPPED, INVALIDATED
+  mt5Executed           Boolean        @default(false)
+  createdAt             DateTime       @default(now())
+  updatedAt             DateTime       @updatedAt
+  executions            ExecutionLog[]
+}
+
+model ExecutionLog {
+  id          String   @id @default(cuid())
+  userId      String?
+  user        User?    @relation(fields: [userId], references: [id])
+  signalId    String?
+  signal      Signal?  @relation(fields: [signalId], references: [id])
+  symbol      String
+  action      String   // BUY, SELL, CANCEL
+  volume      Float    @default(0.5)
+  entryPrice  Float
+  stopLoss    Float
+  takeProfit  Float
+  status      String   @default("EXECUTED") // EXECUTED, FAILED, PENDING
+  mt5Ticket   String?
+  responseMsg String?
+  createdAt   DateTime @default(now())
+}
