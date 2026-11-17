@@ -17,7 +17,6 @@ import {
   RotateCcw,
   Activity,
   Compass,
-  Code2,
   FileText,
 } from 'lucide-react';
 
@@ -43,8 +42,6 @@ export default function SignalDashboard({
   showExecutionControls = true,
 }: SignalDashboardProps) {
   const [copiedPayload, setCopiedPayload] = useState(false);
-  const [copiedJson, setCopiedJson] = useState(false);
-  const [showRawJson, setShowRawJson] = useState(false);
 
   const setupType =
     signal.trade_execution?.setup_type ||
@@ -108,60 +105,6 @@ export default function SignalDashboard({
     signal.visual_proof_annotations?.tp2_y_percent ??
     18;
   const zones = signal.zones || signal.visual_proof_annotations?.zones || [];
-  const predictionPath =
-    signal.prediction_path || signal.visual_proof_annotations?.prediction_path || [];
-
-  const strictSchemaJson = {
-    asset: signal.asset,
-    timeframe: signal.timeframe,
-    chart_type: chartType,
-    analysis_mode: analysisMode,
-    bias,
-    confidence_score: signal.confidence_score,
-    current_market_phase: currentMarketPhase,
-    what_is_happening: whatIsHappening,
-    how_it_works_steps: howItWorksSteps,
-    entry_y: entryY,
-    stop_loss_y: stopLossY,
-    tp1_y: tp1Y,
-    tp2_y: tp2Y,
-    zones: zones.map((z) => ({
-      x_start: z.x_start ?? z.x_start_percent,
-      y_start: z.y_start ?? z.y_start_percent,
-      x_end: z.x_end ?? z.x_end_percent,
-      y_end: z.y_end ?? z.y_end_percent,
-      label: z.label,
-      type: z.type,
-    })),
-    prediction_path: predictionPath.map((pt) => ({
-      x: pt.x ?? pt.x_percent,
-      y: pt.y ?? pt.y_percent,
-      label: pt.label ?? pt.note,
-    })),
-    market_mechanics_explanation: {
-      current_market_phase: currentMarketPhase,
-      current_phase: currentMarketPhase,
-      what_is_happening: whatIsHappening,
-      how_it_works_steps: howItWorksSteps,
-      how_it_works_step_by_step: howItWorksSteps,
-    },
-    trading_tools_analysis: {
-      market_structure: tools?.market_structure || 'N/A',
-      liquidity_zones: tools?.liquidity_zones || 'N/A',
-      imbalances_and_obs: tools?.imbalances_and_obs || 'N/A',
-      fibonacci_or_session_context: tools?.fibonacci_or_session_context || 'N/A',
-    },
-    trade_execution: {
-      setup_type: setupType,
-      entry_price: signal.entry_price,
-      stop_loss: signal.stop_loss,
-      take_profit_1: signal.take_profit_1,
-      take_profit_2: signal.take_profit_2,
-      risk_to_reward: rrr,
-      invalidation_condition: invalidation,
-    },
-    visual_proof_annotations: signal.visual_proof_annotations,
-  };
 
   const copyPayload = () => {
     const payload = {
@@ -179,12 +122,6 @@ export default function SignalDashboard({
     navigator.clipboard.writeText(JSON.stringify(payload, null, 2));
     setCopiedPayload(true);
     setTimeout(() => setCopiedPayload(false), 2500);
-  };
-
-  const copySchemaJson = () => {
-    navigator.clipboard.writeText(JSON.stringify(strictSchemaJson, null, 2));
-    setCopiedJson(true);
-    setTimeout(() => setCopiedJson(false), 2500);
   };
 
   return (
@@ -260,15 +197,6 @@ export default function SignalDashboard({
           <div className="flex items-center gap-2 w-full sm:w-auto">
             <button
               type="button"
-              onClick={() => setShowRawJson(!showRawJson)}
-              className="px-3 py-2 rounded-lg bg-[#F8FAFC] hover:bg-[#EFF6FF] text-xs font-semibold text-[#0F172A] hover:text-[#1D4ED8] border border-[#CBD5E1] flex items-center justify-center gap-1.5 transition-all"
-            >
-              <Code2 className="w-3.5 h-3.5 text-[#1D4ED8]" />
-              <span>{showRawJson ? 'Hide JSON' : 'JSON Output'}</span>
-            </button>
-
-            <button
-              type="button"
               onClick={onReset}
               className="flex-1 sm:flex-initial px-3.5 py-2 rounded-lg bg-[#F8FAFC] hover:bg-[#EFF6FF] text-xs font-semibold text-[#0F172A] hover:text-[#1D4ED8] border border-[#CBD5E1] flex items-center justify-center gap-1.5 transition-all"
             >
@@ -308,29 +236,6 @@ export default function SignalDashboard({
           </div>
         </div>
       </div>
-
-      {/* Optional Raw JSON Schema Drawer */}
-      {showRawJson && (
-        <div className="saas-card rounded-2xl p-5 space-y-3">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-mono font-bold uppercase tracking-wider text-[#1D4ED8] flex items-center gap-1.5">
-              <Code2 className="w-4 h-4" />
-              <span>Strict Vision AI JSON Output</span>
-            </span>
-            <button
-              type="button"
-              onClick={copySchemaJson}
-              className="px-3 py-1 rounded-lg bg-[#EFF6FF] hover:bg-[#DBEAFE] border border-[#93C5FD] text-xs font-mono font-bold text-[#1D4ED8] flex items-center gap-1.5"
-            >
-              <Copy className="w-3.5 h-3.5" />
-              <span>{copiedJson ? '✓ Copied JSON' : 'Copy JSON'}</span>
-            </button>
-          </div>
-          <pre className="p-4 rounded-xl bg-[#0F172A] text-[#EFF6FF] text-xs font-mono overflow-x-auto max-h-96 leading-relaxed">
-            {JSON.stringify(strictSchemaJson, null, 2)}
-          </pre>
-        </div>
-      )}
 
       {/* Split Layout: Chart View Side-by-Side with Institutional Mechanics & Tools Breakdown */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
