@@ -16,6 +16,9 @@ import {
   Layers,
   Sparkles,
   RotateCcw,
+  Activity,
+  Compass,
+  Code2,
 } from 'lucide-react';
 
 interface SignalDashboardProps {
@@ -40,9 +43,56 @@ export default function SignalDashboard({
   showExecutionControls = true,
 }: SignalDashboardProps) {
   const [copiedPayload, setCopiedPayload] = useState(false);
+  const [copiedJson, setCopiedJson] = useState(false);
+  const [showRawJson, setShowRawJson] = useState(false);
 
-  const isBuy = signal.trade_recommendation === 'BUY';
-  const isSell = signal.trade_recommendation === 'SELL';
+  const setupType =
+    signal.trade_execution?.setup_type ||
+    (signal.trade_recommendation === 'BUY'
+      ? 'BUY SETUP'
+      : signal.trade_recommendation === 'SELL'
+      ? 'SELL SETUP'
+      : 'NO TRADE');
+
+  const isBuy = setupType === 'BUY SETUP' || signal.trade_recommendation === 'BUY';
+  const isSell = setupType === 'SELL SETUP' || signal.trade_recommendation === 'SELL';
+  const bias = signal.bias || signal.market_bias;
+  const currentPhase = signal.market_mechanics_explanation?.current_phase || 'Manipulation';
+  const whatIsHappening =
+    signal.market_mechanics_explanation?.what_is_happening || signal.analysis_summary;
+  const steps = signal.market_mechanics_explanation?.how_it_works_step_by_step || [];
+  const tools = signal.trading_tools_analysis;
+  const rrr = signal.trade_execution?.risk_to_reward || signal.risk_reward_ratio;
+  const invalidation =
+    signal.trade_execution?.invalidation_condition || signal.invalidation_condition;
+
+  const strictSchemaJson = {
+    asset: signal.asset,
+    timeframe: signal.timeframe,
+    bias,
+    confidence_score: signal.confidence_score,
+    market_mechanics_explanation: {
+      current_phase: currentPhase,
+      what_is_happening: whatIsHappening,
+      how_it_works_step_by_step: steps,
+    },
+    trading_tools_analysis: {
+      market_structure: tools?.market_structure || 'N/A',
+      liquidity_zones: tools?.liquidity_zones || 'N/A',
+      imbalances_and_obs: tools?.imbalances_and_obs || 'N/A',
+      fibonacci_or_session_context: tools?.fibonacci_or_session_context || 'N/A',
+    },
+    trade_execution: {
+      setup_type: setupType,
+      entry_price: signal.entry_price,
+      stop_loss: signal.stop_loss,
+      take_profit_1: signal.take_profit_1,
+      take_profit_2: signal.take_profit_2,
+      risk_to_reward: rrr,
+      invalidation_condition: invalidation,
+    },
+    visual_proof_annotations: signal.visual_proof_annotations,
+  };
 
   const copyPayload = () => {
     const payload = {
@@ -53,7 +103,7 @@ export default function SignalDashboard({
       stopLoss: signal.stop_loss,
       takeProfit1: signal.take_profit_1,
       takeProfit2: signal.take_profit_2,
-      rrr: signal.risk_reward_ratio,
+      rrr,
       confidence: signal.confidence_score,
       timestamp: new Date().toISOString(),
     };
@@ -62,9 +112,15 @@ export default function SignalDashboard({
     setTimeout(() => setCopiedPayload(false), 2500);
   };
 
+  const copySchemaJson = () => {
+    navigator.clipboard.writeText(JSON.stringify(strictSchemaJson, null, 2));
+    setCopiedJson(true);
+    setTimeout(() => setCopiedJson(false), 2500);
+  };
+
   return (
     <div className="w-full space-y-6">
-      {/* Top Banner with Asset Badge, Bias, and Quick Actions */}
+      {/* Top Banner with Asset Badge, Bias, Current Phase, and Quick Actions */}
       <div className="saas-card rounded-2xl p-5">
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
           <div className="flex items-center gap-3.5">
@@ -103,7 +159,10 @@ export default function SignalDashboard({
                       : 'bg-[#FEF3C7] border-[#FDE68A] text-[#0F172A]'
                   }`}
                 >
-                  {signal.trade_recommendation} SETUP
+                  {setupType}
+                </span>
+                <span className="text-xs font-mono font-bold px-2.5 py-0.5 rounded-full bg-[#FEF3C7] border border-[#F59E0B] text-[#0F172A]">
+                  Phase: {currentPhase}
                 </span>
               </div>
               <p className="text-xs text-[#475569] mt-1">
@@ -111,10 +170,8 @@ export default function SignalDashboard({
                 <span className="text-[#0F172A] font-bold font-mono">
                   {signal.confidence_score}%
                 </span>{' '}
-                • Market Bias:{' '}
-                <span className="text-[#1D4ED8] font-bold">
-                  {signal.market_bias}
-                </span>
+                • Institutional Bias:{' '}
+                <span className="text-[#1D4ED8] font-bold">{bias}</span>
               </p>
               <div className="mt-2 h-1.5 w-48 max-w-full overflow-hidden rounded-full bg-[#E2E8F0]">
                 <div
@@ -126,8 +183,18 @@ export default function SignalDashboard({
           </div>
 
           {/* Quick Buttons */}
-          <div className="flex items-center gap-2.5 w-full sm:w-auto">
+          <div className="flex items-center gap-2 w-full sm:w-auto">
             <button
+              type="button"
+              onClick={() => setShowRawJson(!showRawJson)}
+              className="px-3 py-2 rounded-lg bg-[#F8FAFC] hover:bg-[#EFF6FF] text-xs font-semibold text-[#0F172A] hover:text-[#1D4ED8] border border-[#CBD5E1] flex items-center justify-center gap-1.5 transition-all"
+            >
+              <Code2 className="w-3.5 h-3.5 text-[#1D4ED8]" />
+              <span>{showRawJson ? 'Hide JSON' : 'JSON Output'}</span>
+            </button>
+
+            <button
+              type="button"
               onClick={onReset}
               className="flex-1 sm:flex-initial px-3.5 py-2 rounded-lg bg-[#F8FAFC] hover:bg-[#EFF6FF] text-xs font-semibold text-[#0F172A] hover:text-[#1D4ED8] border border-[#CBD5E1] flex items-center justify-center gap-1.5 transition-all"
             >
@@ -137,6 +204,7 @@ export default function SignalDashboard({
 
             {showExecutionControls && (
               <button
+                type="button"
                 onClick={onExecuteNow}
                 disabled={isExecuting}
                 className={`flex-1 sm:flex-initial px-4 py-2 rounded-lg text-xs font-bold flex items-center justify-center gap-2 transition-all ${
@@ -167,66 +235,124 @@ export default function SignalDashboard({
         </div>
       </div>
 
-      {/* Split Layout: Chart View Side-by-Side with AI Analysis Breakdown */}
+      {/* Optional Raw JSON Schema Drawer */}
+      {showRawJson && (
+        <div className="saas-card rounded-2xl p-5 space-y-3">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-mono font-bold uppercase tracking-wider text-[#1D4ED8] flex items-center gap-1.5">
+              <Code2 className="w-4 h-4" />
+              <span>Strict Institutional SMC JSON Output</span>
+            </span>
+            <button
+              type="button"
+              onClick={copySchemaJson}
+              className="px-3 py-1 rounded-lg bg-[#EFF6FF] hover:bg-[#DBEAFE] border border-[#93C5FD] text-xs font-mono font-bold text-[#1D4ED8] flex items-center gap-1.5"
+            >
+              <Copy className="w-3.5 h-3.5" />
+              <span>{copiedJson ? '✓ Copied JSON' : 'Copy JSON'}</span>
+            </button>
+          </div>
+          <pre className="p-4 rounded-xl bg-[#0F172A] text-[#EFF6FF] text-xs font-mono overflow-x-auto max-h-96 leading-relaxed">
+            {JSON.stringify(strictSchemaJson, null, 2)}
+          </pre>
+        </div>
+      )}
+
+      {/* Split Layout: Chart View Side-by-Side with Institutional Mechanics & Tools Breakdown */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        {/* Left Column: Chart with SMC Overlays (7 cols on lg) */}
+        {/* Left Column: Chart with Normalized Coordinate SMC Overlays & Market Mechanics (7 cols on lg) */}
         <div className="lg:col-span-7 space-y-4">
           <InteractiveChartOverlay imageUrl={chartImage} signal={signal} />
 
-          {/* Analysis Summary Box */}
-          <div className="saas-card rounded-2xl p-5">
-            <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-[#1D4ED8] mb-2 font-mono">
-              <Sparkles className="w-4 h-4 text-[#1D4ED8]" />
-              <span>Vision AI Technical Summary</span>
+          {/* Market Mechanics Explanation Box */}
+          <div className="saas-card rounded-2xl p-5 space-y-4">
+            <div className="flex flex-wrap items-center justify-between gap-2 pb-3 border-b border-[#E2E8F0]">
+              <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-[#1D4ED8] font-mono">
+                <Sparkles className="w-4 h-4 text-[#1D4ED8]" />
+                <span>Market Mechanics &amp; Order Flow</span>
+              </div>
+              <span className="px-2.5 py-0.5 rounded-full bg-[#EFF6FF] border border-[#93C5FD] text-[11px] font-mono font-bold text-[#1D4ED8]">
+                {currentPhase} Phase
+              </span>
             </div>
-            <p className="text-sm text-[#475569] leading-relaxed">
-              {signal.analysis_summary}
+
+            <p className="text-sm text-[#0F172A] leading-relaxed font-medium">
+              {whatIsHappening}
             </p>
+
+            {steps.length > 0 && (
+              <div className="space-y-2.5 pt-1">
+                <p className="text-[11px] font-mono font-bold uppercase tracking-wider text-[#475569]">
+                  How It Works Step-by-Step
+                </p>
+                {steps.map((step, idx) => (
+                  <div
+                    key={idx}
+                    className="flex items-start gap-3 p-3 rounded-xl bg-[#F8FAFC] border border-[#E2E8F0] text-xs"
+                  >
+                    <span className="w-5 h-5 rounded-full bg-[#1D4ED8] text-white font-mono text-[10px] font-bold flex items-center justify-center flex-shrink-0 mt-0.5">
+                      {idx + 1}
+                    </span>
+                    <span className="leading-relaxed text-[#0F172A] font-medium">
+                      {step}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
 
           {/* Invalidation Condition Box */}
           <div className="rounded-2xl bg-[#FEF2F2] border border-[#FECACA] p-4">
             <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-[#EF4444] mb-1.5 font-mono">
               <ShieldAlert className="w-4 h-4 text-[#EF4444]" />
-              <span>Invalidation Condition</span>
+              <span>Structural Invalidation Condition</span>
             </div>
             <p className="text-xs text-[#0F172A] leading-relaxed font-mono">
-              {signal.invalidation_condition}
+              {invalidation}
             </p>
           </div>
         </div>
 
-        {/* Right Column: Key Metric Cards & Trade Setup Breakdown (5 cols on lg) */}
+        {/* Right Column: Trade Execution & Trading Tools Analysis (5 cols on lg) */}
         <div className="lg:col-span-5 space-y-4">
+          {/* Trade Execution Levels Card */}
           <div className="saas-card rounded-2xl p-5">
             <div className="flex items-center justify-between pb-3 border-b border-[#E2E8F0]">
               <span className="text-xs font-mono font-bold uppercase tracking-wider text-[#0F172A] flex items-center gap-1.5">
                 <Crosshair className="w-4 h-4 text-[#1D4ED8]" />
-                Trade execution levels
+                Trade Execution ({setupType})
               </span>
               <span className="rounded-full border border-[#93C5FD] bg-[#EFF6FF] px-2.5 py-0.5 text-[11px] font-mono font-bold text-[#1D4ED8]">
-                R:R {signal.risk_reward_ratio}
+                R:R {rrr}
               </span>
             </div>
             <div className="mt-3.5 grid grid-cols-2 gap-3">
               {[
-                { label: 'Entry Price', value: signal.entry_price, color: '#0F172A', badge: '#F59E0B' },
-                { label: 'Stop Loss', value: signal.stop_loss, color: '#EF4444', badge: '#EF4444' },
-                { label: 'Take Profit 1', value: signal.take_profit_1, color: '#1D4ED8', badge: '#2563EB' },
-                { label: 'Take Profit 2', value: signal.take_profit_2, color: '#1D4ED8', badge: '#1D4ED8' },
+                { label: 'Entry Price', value: signal.entry_price, color: '#0F172A', badge: '#F59E0B', yPct: signal.visual_proof_annotations?.entry_y_percent },
+                { label: 'Stop Loss', value: signal.stop_loss, color: '#EF4444', badge: '#EF4444', yPct: signal.visual_proof_annotations?.stop_loss_y_percent },
+                { label: 'Take Profit 1', value: signal.take_profit_1, color: '#1D4ED8', badge: '#2563EB', yPct: signal.visual_proof_annotations?.tp1_y_percent },
+                { label: 'Take Profit 2', value: signal.take_profit_2, color: '#1D4ED8', badge: '#1D4ED8', yPct: signal.visual_proof_annotations?.tp2_y_percent },
               ].map((level) => (
                 <div
                   key={level.label}
                   className="rounded-xl border border-[#E2E8F0] bg-[#F8FAFC] p-3"
                 >
-                  <div className="flex items-center gap-1.5">
-                    <span
-                      className="h-2 w-2 rounded-full"
-                      style={{ backgroundColor: level.badge }}
-                    />
-                    <p className="text-[10px] font-bold uppercase tracking-wide text-[#475569]">
-                      {level.label}
-                    </p>
+                  <div className="flex items-center justify-between gap-1.5">
+                    <div className="flex items-center gap-1.5">
+                      <span
+                        className="h-2 w-2 rounded-full"
+                        style={{ backgroundColor: level.badge }}
+                      />
+                      <p className="text-[10px] font-bold uppercase tracking-wide text-[#475569]">
+                        {level.label}
+                      </p>
+                    </div>
+                    {typeof level.yPct === 'number' && (
+                      <span className="text-[9px] font-mono text-[#475569]">
+                        Y:{level.yPct}%
+                      </span>
+                    )}
                   </div>
                   <p
                     className="mt-1 font-mono text-base font-extrabold"
@@ -239,30 +365,86 @@ export default function SignalDashboard({
             </div>
           </div>
 
-          {/* Key Confluences Breakdown Card */}
-          <div className="saas-card rounded-2xl p-5">
-            <div className="flex items-center gap-2 text-xs font-mono font-bold uppercase tracking-wider text-[#0F172A] mb-3">
-              <Layers className="w-4 h-4 text-[#1D4ED8]" />
-              <span>Smart Money Confluences (SMC)</span>
+          {/* Institutional Trading Tools Analysis Breakdown Card */}
+          <div className="saas-card rounded-2xl p-5 space-y-3">
+            <div className="flex items-center gap-2 text-xs font-mono font-bold uppercase tracking-wider text-[#0F172A] pb-2 border-b border-[#E2E8F0]">
+              <Compass className="w-4 h-4 text-[#1D4ED8]" />
+              <span>Institutional Trading Tools Analysis</span>
             </div>
 
             <div className="space-y-2.5">
-              {signal.key_confluences?.map((conf, idx) => (
-                <div
-                  key={idx}
-                  className="flex items-start gap-2.5 p-3 rounded-xl bg-[#F8FAFC] border border-[#E2E8F0] text-xs text-[#0F172A]"
-                >
-                  <CheckCircle2 className="w-4 h-4 text-[#1D4ED8] flex-shrink-0 mt-0.5" />
-                  <span className="leading-relaxed text-[#475569] font-medium">{conf}</span>
-                </div>
-              ))}
+              {[
+                {
+                  title: 'Market Structure (BOS / CHoCH)',
+                  content: tools?.market_structure,
+                },
+                {
+                  title: 'Liquidity Zones (BSL / SSL)',
+                  content: tools?.liquidity_zones,
+                },
+                {
+                  title: 'Imbalances & Order Blocks (FVG / OB)',
+                  content: tools?.imbalances_and_obs,
+                },
+                {
+                  title: 'Fibonacci & Session Context',
+                  content: tools?.fibonacci_or_session_context,
+                },
+              ].map(
+                (item) =>
+                  item.content && (
+                    <div
+                      key={item.title}
+                      className="p-3 rounded-xl bg-[#F8FAFC] border border-[#E2E8F0] space-y-1"
+                    >
+                      <p className="text-[10px] font-mono font-bold uppercase tracking-wider text-[#1D4ED8]">
+                        {item.title}
+                      </p>
+                      <p className="text-xs leading-relaxed text-[#0F172A] font-medium">
+                        {item.content}
+                      </p>
+                    </div>
+                  )
+              )}
             </div>
           </div>
+
+          {/* Annotated Visual Proof Zones Summary */}
+          {signal.visual_proof_annotations?.zones?.length > 0 && (
+            <div className="saas-card rounded-2xl p-5">
+              <div className="flex items-center gap-2 text-xs font-mono font-bold uppercase tracking-wider text-[#0F172A] mb-3">
+                <Activity className="w-4 h-4 text-[#1D4ED8]" />
+                <span>Mapped Chart Coordinates (0-100%)</span>
+              </div>
+
+              <div className="space-y-2">
+                {signal.visual_proof_annotations.zones.map((z, idx) => (
+                  <div
+                    key={idx}
+                    className="flex items-center justify-between gap-2 p-2.5 rounded-xl bg-[#F8FAFC] border border-[#E2E8F0] text-xs"
+                  >
+                    <div className="flex items-center gap-2 min-w-0">
+                      <span className="px-2 py-0.5 rounded bg-[#EFF6FF] border border-[#93C5FD] text-[#1D4ED8] font-mono text-[10px] font-bold">
+                        {z.type}
+                      </span>
+                      <span className="truncate font-medium text-[#0F172A]">
+                        {z.label}
+                      </span>
+                    </div>
+                    <span className="font-mono text-[10px] text-[#475569] flex-shrink-0">
+                      X:{z.x_start_percent}-{z.x_end_percent}% · Y:{z.y_start_percent}-{z.y_end_percent}%
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* MT5 Payload & Webhook Actions Bar */}
           {showExecutionControls && (
             <div className="saas-card p-4 rounded-2xl flex flex-col sm:flex-row items-center justify-between gap-3">
               <button
+                type="button"
                 onClick={copyPayload}
                 className="w-full sm:w-auto flex-1 flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg bg-[#F8FAFC] hover:bg-[#EFF6FF] text-xs font-semibold text-[#0F172A] border border-[#CBD5E1] transition-all"
               >
@@ -271,6 +453,7 @@ export default function SignalDashboard({
               </button>
 
               <button
+                type="button"
                 onClick={onOpenMT5Modal}
                 className="w-full sm:w-auto flex-1 flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg btn-royal-primary text-xs font-bold transition-all"
               >

@@ -104,16 +104,29 @@ export async function POST(request: NextRequest) {
       asset: data.asset,
       timeframe: data.timeframe,
     });
-    if (result.error === 'IMAGE_UNREADABLE') {
-      return NextResponse.json({ error: 'IMAGE_UNREADABLE', message: 'The image is not a readable chart.' }, { status: 422 });
+    if (result.error === 'IMAGE_UNREADABLE' || result.trade_execution?.setup_type === 'INVALID_IMAGE') {
+      return NextResponse.json(
+        {
+          error: 'IMAGE_UNREADABLE',
+          message:
+            result.market_mechanics_explanation?.what_is_happening ||
+            'The uploaded image is not a readable financial chart.',
+          analysis: result,
+        },
+        { status: 422 }
+      );
     }
     if (!validAnalysis(result)) {
       return NextResponse.json({ error: 'INVALID_AI_RESPONSE', message: 'The vision provider returned incomplete analysis.' }, { status: 502 });
     }
 
+    const resolvedAsset = data.asset?.trim() || result.asset;
+    const resolvedTimeframe = data.timeframe?.trim() || result.timeframe;
+
     const analysis: TradeAnalysis = {
-      asset: data.asset?.trim() || result.asset,
-      timeframe: data.timeframe?.trim() || result.timeframe,
+      asset: resolvedAsset,
+      timeframe: resolvedTimeframe,
+      bias: result.bias,
       market_bias: result.market_bias,
       trade_recommendation: result.trade_recommendation,
       confidence_score: result.confidence_score,
@@ -125,6 +138,10 @@ export async function POST(request: NextRequest) {
       key_confluences: result.key_confluences,
       invalidation_condition: result.invalidation_condition,
       summary: result.analysis_summary,
+      market_mechanics_explanation: result.market_mechanics_explanation,
+      trading_tools_analysis: result.trading_tools_analysis,
+      trade_execution: result.trade_execution,
+      visual_proof_annotations: result.visual_proof_annotations,
     };
 
     const user = await prisma.user.findFirst({ where: { email: 'trader@apexvisionai.io' } });
@@ -144,6 +161,16 @@ export async function POST(request: NextRequest) {
         keyConfluences: JSON.stringify(analysis.key_confluences),
         invalidationCondition: analysis.invalidation_condition,
         analysisSummary: analysis.summary,
+        rawVisionOutput: JSON.stringify({
+          asset: analysis.asset,
+          timeframe: analysis.timeframe,
+          bias: analysis.bias,
+          confidence_score: analysis.confidence_score,
+          market_mechanics_explanation: analysis.market_mechanics_explanation,
+          trading_tools_analysis: analysis.trading_tools_analysis,
+          trade_execution: analysis.trade_execution,
+          visual_proof_annotations: analysis.visual_proof_annotations,
+        }),
         status: 'ACTIVE',
         mt5Executed: false,
       },
