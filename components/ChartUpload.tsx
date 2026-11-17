@@ -1,232 +1,164 @@
 'use client';
 
-import React, { useState, useRef, useEffect, useCallback } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  UploadCloud,
   ClipboardPaste,
   Image as ImageIcon,
-  Sparkles,
-  Zap,
-  CheckCircle2,
-  AlertTriangle,
   Loader2,
-  Layers,
-  Flame,
+  ScanLine,
+  UploadCloud,
 } from 'lucide-react';
 import { SAMPLE_CHARTS, SampleChart } from '@/lib/sample-charts';
 
+export interface ChartScanOptions {
+  asset: string;
+  timeframe: string;
+  sampleId?: string;
+}
+
 interface ChartUploadProps {
-  onAnalyze: (imageData: string, sampleId?: string) => Promise<void>;
+  onAnalyze: (imageData: string, options: ChartScanOptions) => Promise<void>;
   isLoading: boolean;
 }
+
+const ASSETS = ['XAUUSD', 'EURUSD', 'GBPUSD', 'NAS100'];
+const TIMEFRAMES = ['5M', '15M', '1H', '4H'];
+const ACCEPTED_TYPES = ['image/png', 'image/jpeg', 'image/webp'];
+const MAX_FILE_SIZE = 10 * 1024 * 1024;
 
 export default function ChartUpload({ onAnalyze, isLoading }: ChartUploadProps) {
   const [isDragOver, setIsDragOver] = useState(false);
   const [preview, setPreview] = useState<string | null>(null);
   const [selectedSample, setSelectedSample] = useState<SampleChart | null>(null);
-  const [pasteNotice, setPasteNotice] = useState(false);
-  const [scanStage, setScanStage] = useState('Idle');
+  const [asset, setAsset] = useState('XAUUSD');
+  const [timeframe, setTimeframe] = useState('15M');
+  const [error, setError] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Handle Ctrl+V paste anywhere on page
-  const handlePaste = useCallback(
-    (e: ClipboardEvent) => {
-      const items = e.clipboardData?.items;
-      if (!items) return;
-
-      for (let i = 0; i < items.length; i++) {
-        if (items[i].type.indexOf('image') !== -1) {
-          const file = items[i].getAsFile();
-          if (file) {
-            processFile(file);
-            setPasteNotice(true);
-            setTimeout(() => setPasteNotice(false), 3000);
-          }
-          break;
-        }
-      }
-    },
-    []
-  );
-
-  useEffect(() => {
-    window.addEventListener('paste', handlePaste);
-    return () => window.removeEventListener('paste', handlePaste);
-  }, [handlePaste]);
-
-  // Read file as base64 data URI
-  const processFile = (file: File) => {
+  const loadFile = useCallback((file: File) => {
+    if (!ACCEPTED_TYPES.includes(file.type)) {
+      setError('Choose a PNG, JPG, or WEBP chart image.');
+      return;
+    }
+    if (file.size > MAX_FILE_SIZE) {
+      setError('Chart images must be smaller than 10 MB.');
+      return;
+    }
+    setError('');
     setSelectedSample(null);
     const reader = new FileReader();
-    reader.onload = (e) => {
-      const result = e.target?.result as string;
-      setPreview(result);
-      triggerAnalysis(result);
-    };
+    reader.onload = () => setPreview(typeof reader.result === 'string' ? reader.result : null);
+    reader.onerror = () => setError('The selected image could not be read.');
     reader.readAsDataURL(file);
-  };
+  }, []);
 
-  const handleDrop = (e: React.DragEvent) => {
-    e.preventDefault();
-    setIsDragOver(false);
-    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
-      processFile(e.dataTransfer.files[0]);
-    }
-  };
+  useEffect(() => {
+    const handlePaste = (event: ClipboardEvent) => {
+      const image = Array.from(event.clipboardData?.items ?? [])
+        .find((item) => ACCEPTED_TYPES.includes(item.type))
+        ?.getAsFile();
+      if (image) loadFile(image);
+    };
+    window.addEventListener('paste', handlePaste);
+    return () => window.removeEventListener('paste', handlePaste);
+  }, [loadFile]);
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files[0]) {
-      processFile(e.target.files[0]);
-    }
-  };
-
-  const selectSampleChart = (sample: SampleChart) => {
+  const selectSample = (sample: SampleChart) => {
+    setAsset(sample.asset);
+    setTimeframe(sample.timeframe.toUpperCase());
     setSelectedSample(sample);
     setPreview(sample.thumbnailUrl);
-    triggerAnalysis(sample.thumbnailUrl, sample.id);
+    setError('');
   };
 
-  const triggerAnalysis = async (img: string, sampleId?: string) => {
-    setScanStage('Parsing Candlestick Geometries...');
-    setTimeout(() => setScanStage('Scanning Market Structure (BOS / CHOCH)...'), 600);
-    setTimeout(() => setScanStage('Detecting Fair Value Gaps (FVGs) & Order Blocks...'), 1200);
-    setTimeout(() => setScanStage('Calculating Invalidation & Asymmetric RRR (> 1:2)...'), 1800);
-    await onAnalyze(img, sampleId);
+  const scan = () => {
+    if (preview) {
+      void onAnalyze(preview, {
+        asset,
+        timeframe,
+        ...(selectedSample ? { sampleId: selectedSample.id } : {}),
+      });
+    }
   };
 
   return (
-    <div className="w-full space-y-6">
-      {/* Upload Zone Container */}
-      <div
-        onDragOver={(e) => {
-          e.preventDefault();
-          setIsDragOver(true);
-        }}
-        onDragLeave={() => setIsDragOver(false)}
-        onDrop={handleDrop}
-        onClick={() => fileInputRef.current?.click()}
-        className={`relative w-full rounded-2xl p-8 sm:p-12 text-center cursor-pointer transition-all duration-300 border ${
-          isDragOver
-            ? 'bg-[#3D2314] border-[#D4A373] shadow-gold-glow scale-[1.008]'
-            : 'bg-gradient-to-br from-[#2A1810] via-[#1E120C] to-[#150C07] border-[#D4A373]/20 hover:border-[#D4A373]/50 shadow-card-lux'
-        }`}
-      >
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept="image/*"
-          className="hidden"
-          onChange={handleFileChange}
-        />
-
-        {/* Laser scanner animation while loading */}
-        {isLoading && (
-          <div className="absolute inset-0 z-20 rounded-2xl overflow-hidden pointer-events-none">
-            <div className="w-full h-1 bg-gradient-to-r from-transparent via-[#D4A373] to-transparent shadow-[0_0_20px_#D4A373] animate-pulse absolute top-1/2 -translate-y-1/2" />
-            <div className="absolute inset-0 bg-[#0B0B0B]/70 backdrop-blur-sm flex flex-col items-center justify-center gap-3">
-              <Loader2 className="w-10 h-10 text-[#D4A373] animate-spin" />
-              <div className="text-center">
-                <p className="text-sm font-bold text-[#F5EBE6]">
-                  Vision AI Engine Processing Chart
-                </p>
-                <p className="text-xs font-mono text-[#D4A373] mt-1 animate-pulse">
-                  {scanStage}
-                </p>
-              </div>
-            </div>
-          </div>
-        )}
-
-        <div className="max-w-md mx-auto flex flex-col items-center justify-center space-y-4">
-          {/* Icon Badge */}
-          <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-[#3D2314] to-[#1E120C] border border-[#D4A373]/40 flex items-center justify-center shadow-lg group-hover:scale-105 transition-transform">
-            <UploadCloud className="w-8 h-8 text-[#D4A373]" />
-          </div>
-
-          <div>
-            <h3 className="text-lg sm:text-xl font-bold text-[#F5EBE6]">
-              Drop Financial Chart Screenshot Here
-            </h3>
-            <p className="text-xs sm:text-sm text-[#A8968D] mt-1">
-              Supports <span className="text-[#D4A373]">Forex</span>,{' '}
-              <span className="text-[#D4A373]">Crypto</span>,{' '}
-              <span className="text-[#D4A373]">Gold (XAU/USD)</span>, and{' '}
-              <span className="text-[#D4A373]">Indices (US30 / NAS100)</span>
-            </p>
-          </div>
-
-          {/* Paste notice pill */}
-          <div className="flex flex-wrap items-center justify-center gap-2 pt-2">
-            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#1E120C] border border-[#D4A373]/25 text-xs text-[#A8968D]">
-              <ClipboardPaste className="w-3.5 h-3.5 text-[#D4A373]" />
-              Press <kbd className="px-1.5 py-0.5 rounded bg-[#3D2314] text-[#F5EBE6] font-mono text-[11px] border border-[#D4A373]/30">Ctrl + V</kbd> to Paste Directly
-            </span>
-            <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full bg-[#1E120C] border border-[#D4A373]/25 text-xs text-[#10B981]">
-              <Sparkles className="w-3 h-3 text-[#10B981]" />
-              Smart Money Concepts (SMC)
-            </span>
-          </div>
-
-          {pasteNotice && (
-            <div className="text-xs font-semibold text-[#10B981] animate-bounce">
-              ✓ Screenshot pasted from clipboard! Scanning now...
-            </div>
-          )}
-        </div>
+    <div className="chocolate-card rounded-2xl p-4 sm:p-5 space-y-5">
+      <div>
+        <p className="text-sm font-bold text-[#F5EBE6]">Chart input</p>
+        <p className="mt-1 text-xs text-[#A8968D]">Upload, drop, or paste a chart screenshot.</p>
       </div>
 
-      {/* Quick 1-Click Sample Charts Selection */}
-      <div className="rounded-xl bg-[#1E120C]/60 border border-[#D4A373]/20 p-4">
-        <div className="flex items-center justify-between mb-3">
-          <div className="flex items-center gap-2">
-            <Flame className="w-4 h-4 text-[#D4A373]" />
-            <span className="text-xs font-bold uppercase tracking-wider text-[#F5EBE6]">
-              Instant Presets: Try High-Probability SMC Setups
-            </span>
-          </div>
-          <span className="text-[11px] text-[#A8968D]">
-            Click any chart to test Vision AI engine immediately
-          </span>
+      <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-[10px] uppercase tracking-wider text-[#A8968D]">Asset</span>
+          {ASSETS.map((value) => (
+            <button key={value} type="button" onClick={() => setAsset(value)}
+              className={`rounded-full border px-2.5 py-1 text-[11px] font-mono transition ${asset === value ? 'border-[#D4A373] bg-[#3D2314] text-[#F5EBE6]' : 'border-[#D4A373]/20 bg-[#150C07] text-[#A8968D] hover:border-[#D4A373]/50'}`}>
+              {value}
+            </button>
+          ))}
         </div>
-
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          {SAMPLE_CHARTS.map((sample) => (
-            <button
-              key={sample.id}
-              onClick={(e) => {
-                e.stopPropagation();
-                selectSampleChart(sample);
-              }}
-              disabled={isLoading}
-              className={`group text-left p-3 rounded-xl border transition-all ${
-                selectedSample?.id === sample.id
-                  ? 'bg-[#3D2314] border-[#D4A373] shadow-gold-glow'
-                  : 'bg-[#2A1810]/70 border-[#D4A373]/20 hover:border-[#D4A373]/50 hover:bg-[#2A1810]'
-              }`}
-            >
-              <div className="flex items-center justify-between mb-1.5">
-                <span className="font-mono text-xs font-black text-[#F5EBE6] group-hover:text-[#D4A373] transition-colors">
-                  {sample.asset}
-                </span>
-                <span className="text-[10px] px-1.5 py-0.2 rounded bg-[#1E120C] border border-[#D4A373]/30 text-[#D4A373] font-mono">
-                  {sample.timeframe}
-                </span>
-              </div>
-              <p className="text-[11px] text-[#A8968D] truncate">
-                {sample.category} • {sample.mockAnalysis.trade_recommendation}
-              </p>
-              <div className="mt-2 flex items-center justify-between text-[10px] font-mono">
-                <span className={sample.mockAnalysis.trade_recommendation === 'BUY' ? 'text-[#10B981]' : 'text-[#EF4444]'}>
-                  RRR {sample.mockAnalysis.risk_reward_ratio}
-                </span>
-                <span className="text-[#A8968D] group-hover:text-[#F5EBE6] flex items-center gap-0.5">
-                  Scan &rarr;
-                </span>
-              </div>
+        <div className="flex flex-wrap items-center gap-2 sm:ml-auto">
+          <span className="text-[10px] uppercase tracking-wider text-[#A8968D]">Timeframe</span>
+          {TIMEFRAMES.map((value) => (
+            <button key={value} type="button" onClick={() => setTimeframe(value)}
+              className={`rounded-full border px-2.5 py-1 text-[11px] font-mono transition ${timeframe === value ? 'border-[#D4A373] bg-[#3D2314] text-[#F5EBE6]' : 'border-[#D4A373]/20 bg-[#150C07] text-[#A8968D] hover:border-[#D4A373]/50'}`}>
+              {value}
             </button>
           ))}
         </div>
       </div>
+
+      {preview ? (
+        <div className="overflow-hidden rounded-xl border border-[#D4A373]/25 bg-[#0B0B0B]">
+          <div className="flex items-center justify-between border-b border-[#D4A373]/15 px-3 py-2">
+            <span className="flex items-center gap-2 text-xs text-[#A8968D]"><ImageIcon className="h-3.5 w-3.5 text-[#D4A373]" /> Preview · {asset} · {timeframe}</span>
+            <button type="button" onClick={() => { setPreview(null); setSelectedSample(null); }} className="text-xs text-[#D4A373] hover:text-[#F5EBE6]">Remove</button>
+          </div>
+          <img src={preview} alt={`${asset} ${timeframe} chart preview`} className="max-h-64 w-full object-contain" />
+        </div>
+      ) : (
+        <button type="button" onClick={() => fileInputRef.current?.click()}
+          onDragOver={(event) => { event.preventDefault(); setIsDragOver(true); }}
+          onDragLeave={() => setIsDragOver(false)}
+          onDrop={(event) => { event.preventDefault(); setIsDragOver(false); const file = event.dataTransfer.files[0]; if (file) loadFile(file); }}
+          className={`flex min-h-52 w-full flex-col items-center justify-center rounded-xl border border-dashed px-5 py-8 text-center transition ${isDragOver ? 'border-[#D4A373] bg-[#3D2314]/40' : 'border-[#D4A373]/30 bg-[#150C07]/70 hover:border-[#D4A373]/60'}`}>
+          <UploadCloud className="mb-3 h-8 w-8 text-[#D4A373]" />
+          <span className="text-sm font-semibold text-[#F5EBE6]">Drop your chart here or browse</span>
+          <span className="mt-1 text-xs text-[#A8968D]">PNG, JPG, WEBP · up to 10 MB</span>
+          <span className="mt-3 inline-flex items-center gap-1.5 rounded-full border border-[#D4A373]/20 bg-[#1E120C] px-2.5 py-1 text-[10px] text-[#A8968D]">
+            <ClipboardPaste className="h-3 w-3 text-[#D4A373]" /> Paste image with Ctrl+V
+          </span>
+        </button>
+      )}
+      <input ref={fileInputRef} type="file" accept="image/png,image/jpeg,image/webp" className="hidden"
+        onChange={(event) => { const file = event.target.files?.[0]; if (file) loadFile(file); event.currentTarget.value = ''; }} />
+
+      {error && <p role="alert" className="text-xs text-[#EF4444]">{error}</p>}
+
+      <div className="rounded-xl border border-[#D4A373]/20 bg-[#150C07]/50 p-3">
+        <div className="mb-2 flex items-center justify-between gap-2">
+          <div>
+            <p className="text-xs font-semibold text-[#F5EBE6]">Try a sample chart</p>
+            <p className="text-[10px] text-[#A8968D]">Load a candlestick setup without an upload.</p>
+          </div>
+          {selectedSample && <span className="text-[10px] text-[#10B981]">Sample loaded</span>}
+        </div>
+        <div className="flex flex-wrap gap-2">
+          {SAMPLE_CHARTS.map((sample) => (
+            <button key={sample.id} type="button" onClick={() => selectSample(sample)}
+              className={`rounded-lg border px-2.5 py-1.5 text-[10px] font-mono transition ${selectedSample?.id === sample.id ? 'border-[#D4A373] bg-[#3D2314] text-[#F5EBE6]' : 'border-[#D4A373]/20 bg-[#1E120C] text-[#A8968D] hover:text-[#D4A373]'}`}>
+              {sample.asset} · {sample.timeframe.toUpperCase()}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <button type="button" onClick={scan} disabled={!preview || isLoading}
+        className="btn-bronze-gold flex w-full items-center justify-center gap-2 rounded-xl px-4 py-3 text-sm font-bold disabled:cursor-not-allowed disabled:opacity-50">
+        {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <ScanLine className="h-4 w-4 text-[#D4A373]" />}
+        {isLoading ? 'Scanning chart…' : 'Run SMC Vision Scan'}
+      </button>
     </div>
   );
 }

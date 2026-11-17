@@ -58,7 +58,7 @@ module.exports = {
         'card-lux': '0 8px 32px 0 rgba(0, 0, 0, 0.6)',
       },
       borderColor: {
-        'gold-subtle': 'rgba(212, 163, 115, 0.2)',
+        'gold-subtle': 'rgba(212, 163, 115, 0.25)',
         'gold-strong': 'rgba(212, 163, 115, 0.4)',
       },
       backgroundImage: {

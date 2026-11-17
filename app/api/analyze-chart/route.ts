@@ -1,45 +1,136 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { analyzeChartImage } from '@/lib/vision-engine';
 import { prisma } from '@/lib/prisma';
+import { TradeAnalysis } from '@/lib/types';
+import { SAMPLE_CHARTS } from '@/lib/sample-charts';
 
-export async function POST(req: NextRequest) {
+export const runtime = 'nodejs';
+const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
+const IMAGE_TYPES = new Set(['image/png', 'image/jpeg', 'image/webp']);
+
+type RequestData = {
+  image?: string;
+  mimeType?: string;
+  sampleId?: string;
+  asset?: string;
+  timeframe?: string;
+};
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}
+
+function validAnalysis(value: unknown): value is Omit<TradeAnalysis, 'summary'> & { summary?: string; analysis_summary?: string } {
+  if (!isRecord(value)) return false;
+  return typeof value.asset === 'string'
+    && typeof value.timeframe === 'string'
+    && ['BULLISH', 'BEARISH', 'NEUTRAL'].includes(String(value.market_bias))
+    && ['BUY', 'SELL', 'WAIT'].includes(String(value.trade_recommendation))
+    && typeof value.confidence_score === 'number'
+    && Number.isFinite(value.confidence_score)
+    && value.confidence_score >= 0
+    && value.confidence_score <= 100
+    && ['entry_price', 'stop_loss', 'take_profit_1', 'take_profit_2'].every(
+      (key) => typeof value[key] === 'number' && Number.isFinite(value[key])
+    )
+    && typeof value.risk_reward_ratio === 'string'
+    && Array.isArray(value.key_confluences)
+    && value.key_confluences.every((item) => typeof item === 'string')
+    && typeof value.invalidation_condition === 'string'
+    && (typeof value.summary === 'string' || typeof value.analysis_summary === 'string');
+}
+
+async function readInput(request: NextRequest): Promise<{ data: RequestData; imageData: string; mimeType: string }> {
+  const contentType = request.headers.get('content-type') || '';
+  let data: RequestData;
+  let imageData = '';
+  let mimeType = '';
+
+  if (contentType.includes('multipart/form-data')) {
+    const form = await request.formData();
+    data = {
+      asset: typeof form.get('asset') === 'string' ? String(form.get('asset')) : '',
+      timeframe: typeof form.get('timeframe') === 'string' ? String(form.get('timeframe')) : '',
+      sampleId: typeof form.get('sampleId') === 'string' ? String(form.get('sampleId')) : '',
+    };
+    if (SAMPLE_CHARTS.some((sample) => sample.id === data.sampleId)) {
+      return { data, imageData: '', mimeType: '' };
+    }
+    const file = form.get('image');
+    if (!(file instanceof File)) throw new Error('Chart image file is required.');
+    mimeType = file.type;
+    if (!IMAGE_TYPES.has(mimeType)) throw new Error('Only PNG, JPG, and WEBP chart images are supported.');
+    if (file.size > MAX_IMAGE_BYTES) throw new Error('Chart images must be 10 MB or smaller.');
+    imageData = `data:${mimeType};base64,${Buffer.from(await file.arrayBuffer()).toString('base64')}`;
+  } else if (contentType.includes('application/json')) {
+    const body: unknown = await request.json();
+    if (!isRecord(body)) throw new Error('A JSON request body is required.');
+    data = body as RequestData;
+    data.asset = typeof body.asset === 'string' ? body.asset : '';
+    data.timeframe = typeof body.timeframe === 'string' ? body.timeframe : '';
+    data.sampleId = typeof body.sampleId === 'string' ? body.sampleId : '';
+    if (SAMPLE_CHARTS.some((sample) => sample.id === data.sampleId)) {
+      return { data, imageData: '', mimeType: '' };
+    }
+    const rawImage = typeof data.image === 'string' ? data.image : '';
+    const dataUrl = rawImage.match(/^data:(image\/(?:png|jpeg|webp));base64,([A-Za-z0-9+/=]+)$/);
+    if (dataUrl) {
+      mimeType = dataUrl[1];
+      imageData = rawImage;
+    } else {
+      mimeType = data.mimeType || 'image/png';
+      imageData = rawImage;
+    }
+    if (!IMAGE_TYPES.has(mimeType)) throw new Error('Only PNG, JPG, and WEBP chart images are supported.');
+    const encoded = imageData.startsWith('data:') ? imageData.split(',')[1] : imageData;
+    if (!encoded || !/^[A-Za-z0-9+/]+={0,2}$/.test(encoded)) throw new Error('Valid base64 chart image data is required.');
+    if (Buffer.from(encoded, 'base64').byteLength > MAX_IMAGE_BYTES) throw new Error('Chart images must be 10 MB or smaller.');
+    if (!imageData.startsWith('data:')) imageData = `data:${mimeType};base64,${encoded}`;
+  } else {
+    throw new Error('Send multipart/form-data or an application/json base64 image.');
+  }
+
+  return { data, imageData, mimeType };
+}
+
+export async function POST(request: NextRequest) {
   try {
-    const body = await req.json();
-    const { image, sampleId, symbolHint } = body;
-
-    if (!image) {
-      return NextResponse.json(
-        { error: 'IMAGE_UNREADABLE', message: 'No image data provided' },
-        { status: 400 }
-      );
+    const { data, imageData } = await readInput(request);
+    if (!data.sampleId && !imageData) {
+      return NextResponse.json({ error: 'IMAGE_UNREADABLE', message: 'No chart image was provided.' }, { status: 400 });
     }
 
-    // Call AI Vision Analysis
-    const analysis = await analyzeChartImage(image, sampleId);
-
-    // Rule 3: If the image is blurry or not a chart, return: {"error": "IMAGE_UNREADABLE"}
-    if (analysis.error === 'IMAGE_UNREADABLE') {
-      return NextResponse.json(
-        { error: 'IMAGE_UNREADABLE' },
-        { status: 422 }
-      );
-    }
-
-    // Enforce Rule 2: Never output a Risk-to-Reward Ratio lower than 1:2
-    // Ensure RRR string is at least 1:2
-    if (!analysis.risk_reward_ratio || analysis.risk_reward_ratio === '1:1') {
-      analysis.risk_reward_ratio = '1:2.50';
-    }
-
-    // Find default demo user
-    const user = await prisma.user.findFirst({
-      where: { email: 'trader@apexvisionai.io' },
+    const result = await analyzeChartImage(imageData, data.sampleId, {
+      asset: data.asset,
+      timeframe: data.timeframe,
     });
+    if (result.error === 'IMAGE_UNREADABLE') {
+      return NextResponse.json({ error: 'IMAGE_UNREADABLE', message: 'The image is not a readable chart.' }, { status: 422 });
+    }
+    if (!validAnalysis(result)) {
+      return NextResponse.json({ error: 'INVALID_AI_RESPONSE', message: 'The vision provider returned incomplete analysis.' }, { status: 502 });
+    }
 
-    // Store signal in database
+    const analysis: TradeAnalysis = {
+      asset: data.asset?.trim() || result.asset,
+      timeframe: data.timeframe?.trim() || result.timeframe,
+      market_bias: result.market_bias,
+      trade_recommendation: result.trade_recommendation,
+      confidence_score: result.confidence_score,
+      entry_price: result.entry_price,
+      stop_loss: result.stop_loss,
+      take_profit_1: result.take_profit_1,
+      take_profit_2: result.take_profit_2,
+      risk_reward_ratio: result.risk_reward_ratio,
+      key_confluences: result.key_confluences,
+      invalidation_condition: result.invalidation_condition,
+      summary: result.analysis_summary,
+    };
+
+    const user = await prisma.user.findFirst({ where: { email: 'trader@apexvisionai.io' } });
     const savedSignal = await prisma.signal.create({
       data: {
-        userId: user ? user.id : undefined,
+        userId: user?.id,
         asset: analysis.asset,
         timeframe: analysis.timeframe,
         marketBias: analysis.market_bias,
@@ -52,27 +143,22 @@ export async function POST(req: NextRequest) {
         riskRewardRatio: analysis.risk_reward_ratio,
         keyConfluences: JSON.stringify(analysis.key_confluences),
         invalidationCondition: analysis.invalidation_condition,
-        analysisSummary: analysis.analysis_summary,
-        chartImageUrl: image.startsWith('data:') ? image.slice(0, 1000) : image,
+        analysisSummary: analysis.summary,
         status: 'ACTIVE',
         mt5Executed: false,
       },
     });
 
-    return NextResponse.json({
-      success: true,
-      analysis,
-      signalId: savedSignal.id,
-      savedSignal,
-    });
-  } catch (error: any) {
+    return NextResponse.json({ success: true, analysis, signalId: savedSignal.id });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Failed to analyze chart.';
     console.error('Error in /api/analyze-chart:', error);
-    return NextResponse.json(
-      {
-        error: 'INTERNAL_ERROR',
-        message: error?.message || 'Failed to process chart with Vision AI',
-      },
-      { status: 500 }
-    );
+    if (message.includes('required') || message.includes('supported') || message.includes('10 MB') || message.includes('base64') || message.includes('Send multipart')) {
+      return NextResponse.json({ error: 'INVALID_REQUEST', message }, { status: 400 });
+    }
+    if (message.includes('not configured')) {
+      return NextResponse.json({ error: 'VISION_NOT_CONFIGURED', message }, { status: 503 });
+    }
+    return NextResponse.json({ error: 'ANALYSIS_FAILED', message }, { status: 502 });
   }
 }

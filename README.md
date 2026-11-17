@@ -17,6 +17,7 @@ Apex Vision AI is styled strictly according to an institutional luxury palette:
 ---
 
 ## 🚀 Key Features
+mkdir -p ~/.copilot && nano ~/.copilot/config.json
 
 ### 1. Chart Upload & Scan Panel
 - **Drag-and-Drop:** Intuitive file upload zone styled in chocolate brown and amber gold.

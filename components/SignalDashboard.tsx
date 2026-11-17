@@ -29,6 +29,7 @@ interface SignalDashboardProps {
   onExecuteNow: () => Promise<void>;
   isExecuting: boolean;
   executionSuccess: boolean;
+  showExecutionControls?: boolean;
 }
 
 export default function SignalDashboard({
@@ -39,6 +40,7 @@ export default function SignalDashboard({
   onExecuteNow,
   isExecuting,
   executionSuccess,
+  showExecutionControls = true,
 }: SignalDashboardProps) {
   const [copiedPayload, setCopiedPayload] = useState(false);
 
@@ -80,8 +82,10 @@ export default function SignalDashboard({
             >
               {isBuy ? (
                 <TrendingUp className="w-6 h-6" />
-              ) : (
+              ) : isSell ? (
                 <TrendingDown className="w-6 h-6" />
+              ) : (
+                <BarChart2 className="w-6 h-6" />
               )}
             </div>
 
@@ -97,7 +101,9 @@ export default function SignalDashboard({
                   className={`text-xs font-bold tracking-wider px-2.5 py-0.5 rounded-full border ${
                     isBuy
                       ? 'bg-[#10B981]/20 border-[#10B981] text-[#10B981]'
-                      : 'bg-[#EF4444]/20 border-[#EF4444] text-[#EF4444]'
+                      : isSell
+                      ? 'bg-[#EF4444]/20 border-[#EF4444] text-[#EF4444]'
+                      : 'bg-[#D4A373]/15 border-[#D4A373] text-[#D4A373]'
                   }`}
                 >
                   {signal.trade_recommendation} SETUP
@@ -113,6 +119,9 @@ export default function SignalDashboard({
                   {signal.market_bias}
                 </span>
               </p>
+              <div className="mt-2 h-1.5 w-48 max-w-full overflow-hidden rounded-full bg-[#150C07]">
+                <div className="h-full rounded-full bg-gradient-to-r from-[#5A341E] to-[#10B981]" style={{ width: `${Math.min(100, Math.max(0, signal.confidence_score))}%` }} />
+              </div>
             </div>
           </div>
 
@@ -126,7 +135,7 @@ export default function SignalDashboard({
               <span>Scan Another</span>
             </button>
 
-            <button
+            {showExecutionControls && <button
               onClick={onExecuteNow}
               disabled={isExecuting}
               className={`flex-1 sm:flex-initial px-4 py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-2 shadow-lg transition-all ${
@@ -151,7 +160,7 @@ export default function SignalDashboard({
                   <span>Execute on MT5</span>
                 </>
               )}
-            </button>
+            </button>}
           </div>
         </div>
       </div>
@@ -187,137 +196,28 @@ export default function SignalDashboard({
 
         {/* Right Column: Key Metric Cards & Trade Setup Breakdown (5 cols on lg) */}
         <div className="lg:col-span-5 space-y-4">
-          {/* 9 Key Metric Cards Grid */}
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-            {/* Asset */}
-            <div className="p-3.5 rounded-xl bg-[#1E120C] border border-[#D4A373]/20">
-              <p className="text-[10px] font-mono uppercase tracking-wider text-[#A8968D]">
-                Asset
-              </p>
-              <p className="text-base font-black text-[#F5EBE6] mt-0.5">
-                {signal.asset}
-              </p>
-            </div>
-
-            {/* Timeframe */}
-            <div className="p-3.5 rounded-xl bg-[#1E120C] border border-[#D4A373]/20">
-              <p className="text-[10px] font-mono uppercase tracking-wider text-[#A8968D]">
-                Timeframe
-              </p>
-              <p className="text-base font-black text-[#D4A373] mt-0.5 font-mono">
-                {signal.timeframe}
-              </p>
-            </div>
-
-            {/* Market Bias */}
-            <div className="p-3.5 rounded-xl bg-[#1E120C] border border-[#D4A373]/20">
-              <p className="text-[10px] font-mono uppercase tracking-wider text-[#A8968D]">
-                Bias
-              </p>
-              <p
-                className={`text-base font-black mt-0.5 ${
-                  isBuy ? 'text-[#10B981]' : 'text-[#EF4444]'
-                }`}
-              >
-                {signal.market_bias}
-              </p>
-            </div>
-
-            {/* Confidence Score */}
-            <div className="p-3.5 rounded-xl bg-[#1E120C] border border-[#D4A373]/20">
-              <p className="text-[10px] font-mono uppercase tracking-wider text-[#A8968D]">
-                Confidence
-              </p>
-              <p className="text-base font-black text-[#10B981] mt-0.5 font-mono">
-                {signal.confidence_score}%
-              </p>
-            </div>
-
-            {/* RRR (Guaranteed >= 1:2) */}
-            <div className="p-3.5 rounded-xl bg-[#1E120C] border border-[#D4A373]/20">
-              <p className="text-[10px] font-mono uppercase tracking-wider text-[#A8968D]">
-                Risk:Reward
-              </p>
-              <p className="text-base font-black text-[#D4A373] mt-0.5 font-mono">
-                {signal.risk_reward_ratio}
-              </p>
-            </div>
-
-            {/* Recommendation */}
-            <div className="p-3.5 rounded-xl bg-[#1E120C] border border-[#D4A373]/20">
-              <p className="text-[10px] font-mono uppercase tracking-wider text-[#A8968D]">
-                Action
-              </p>
-              <p
-                className={`text-base font-black mt-0.5 ${
-                  isBuy ? 'text-[#10B981]' : 'text-[#EF4444]'
-                }`}
-              >
-                {signal.trade_recommendation}
-              </p>
-            </div>
-          </div>
-
-          {/* Pricing Execution Levels Card */}
-          <div className="rounded-2xl bg-gradient-to-br from-[#2A1810] to-[#1E120C] border border-[#D4A373]/30 p-5 shadow-card-lux space-y-3.5">
+          <div className="rounded-2xl bg-gradient-to-br from-[#2A1810] to-[#1E120C] border border-[#D4A373]/30 p-4 shadow-card-lux">
             <div className="flex items-center justify-between pb-2 border-b border-[#D4A373]/15">
               <span className="text-xs font-mono font-bold uppercase tracking-wider text-[#D4A373] flex items-center gap-1.5">
                 <Crosshair className="w-4 h-4 text-[#D4A373]" />
-                Institutional Execution Levels
+                Trade execution levels
               </span>
-              <span className="text-[11px] text-[#A8968D]">Market Order</span>
-            </div>
-
-            {/* Entry Price */}
-            <div className="flex items-center justify-between p-3 rounded-xl bg-[#150C07] border border-[#D4A373]/25">
-              <div className="flex items-center gap-2">
-                <span className="w-2.5 h-2.5 rounded-full bg-[#D4A373]" />
-                <span className="text-xs font-bold text-[#A8968D]">
-                  ENTRY PRICE
-                </span>
-              </div>
-              <span className="text-base font-mono font-black text-[#F5EBE6]">
-                {signal.entry_price.toLocaleString()}
+              <span className="rounded-lg border border-[#D4A373]/30 bg-[#3D2314] px-2.5 py-1 text-[11px] font-mono font-bold text-[#D4A373]">
+                R:R {signal.risk_reward_ratio}
               </span>
             </div>
-
-            {/* Stop Loss */}
-            <div className="flex items-center justify-between p-3 rounded-xl bg-[#150C07] border border-[#EF4444]/30">
-              <div className="flex items-center gap-2">
-                <span className="w-2.5 h-2.5 rounded-full bg-[#EF4444]" />
-                <span className="text-xs font-bold text-[#EF4444]">
-                  STOP LOSS (SL)
-                </span>
-              </div>
-              <span className="text-base font-mono font-black text-[#EF4444]">
-                {signal.stop_loss.toLocaleString()}
-              </span>
-            </div>
-
-            {/* Take Profit 1 */}
-            <div className="flex items-center justify-between p-3 rounded-xl bg-[#150C07] border border-[#34D399]/30">
-              <div className="flex items-center gap-2">
-                <span className="w-2.5 h-2.5 rounded-full bg-[#34D399]" />
-                <span className="text-xs font-bold text-[#34D399]">
-                  TAKE PROFIT 1 (TP1)
-                </span>
-              </div>
-              <span className="text-base font-mono font-black text-[#34D399]">
-                {signal.take_profit_1.toLocaleString()}
-              </span>
-            </div>
-
-            {/* Take Profit 2 */}
-            <div className="flex items-center justify-between p-3 rounded-xl bg-[#150C07] border border-[#10B981]/35">
-              <div className="flex items-center gap-2">
-                <span className="w-2.5 h-2.5 rounded-full bg-[#10B981]" />
-                <span className="text-xs font-bold text-[#10B981]">
-                  TAKE PROFIT 2 (TP2)
-                </span>
-              </div>
-              <span className="text-base font-mono font-black text-[#10B981]">
-                {signal.take_profit_2.toLocaleString()}
-              </span>
+            <div className="mt-3 grid grid-cols-2 gap-2.5">
+              {[
+                { label: 'Entry Price', value: signal.entry_price, color: '#D4A373' },
+                { label: 'Stop Loss', value: signal.stop_loss, color: '#EF4444' },
+                { label: 'Take Profit 1', value: signal.take_profit_1, color: '#34D399' },
+                { label: 'Take Profit 2', value: signal.take_profit_2, color: '#10B981' },
+              ].map((level) => (
+                <div key={level.label} className="rounded-xl border border-[#D4A373]/15 bg-[#150C07] p-3">
+                  <p className="text-[10px] font-bold uppercase tracking-wide text-[#A8968D]">{level.label}</p>
+                  <p className="mt-1 font-mono text-base font-black" style={{ color: level.color }}>{level.value.toLocaleString()}</p>
+                </div>
+              ))}
             </div>
           </div>
 
@@ -342,7 +242,7 @@ export default function SignalDashboard({
           </div>
 
           {/* MT5 Payload & Webhook Actions Bar */}
-          <div className="p-4 rounded-2xl bg-[#1E120C] border border-[#D4A373]/20 flex flex-col sm:flex-row items-center justify-between gap-3">
+          {showExecutionControls && <div className="p-4 rounded-2xl bg-[#1E120C] border border-[#D4A373]/20 flex flex-col sm:flex-row items-center justify-between gap-3">
             <button
               onClick={copyPayload}
               className="w-full sm:w-auto flex-1 flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl bg-[#2A1810] hover:bg-[#3D2314] text-xs font-medium text-[#F5EBE6] border border-[#D4A373]/25 transition-all"
@@ -358,7 +258,7 @@ export default function SignalDashboard({
               <Terminal className="w-3.5 h-3.5 text-[#D4A373]" />
               <span>MT5 EA & Webhook Setup</span>
             </button>
-          </div>
+          </div>}
         </div>
       </div>
     </div>

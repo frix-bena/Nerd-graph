@@ -2,6 +2,22 @@ export type MarketBias = 'BULLISH' | 'BEARISH' | 'NEUTRAL';
 export type TradeRecommendation = 'BUY' | 'SELL' | 'WAIT';
 export type SignalStatus = 'ACTIVE' | 'HIT_TP1' | 'HIT_TP2' | 'STOPPED' | 'INVALIDATED';
 
+export interface TradeAnalysis {
+  asset: string;
+  timeframe: string;
+  market_bias: 'BULLISH' | 'BEARISH' | 'NEUTRAL';
+  trade_recommendation: 'BUY' | 'SELL' | 'WAIT';
+  confidence_score: number;
+  entry_price: number;
+  stop_loss: number;
+  take_profit_1: number;
+  take_profit_2: number;
+  risk_reward_ratio: string;
+  key_confluences: string[];
+  invalidation_condition: string;
+  summary: string;
+}
+
 export interface SMCSignalOutput {
   asset: string;
   timeframe: string;
