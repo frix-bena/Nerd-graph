@@ -8,7 +8,11 @@ const nextConfig = {
     serverActions: {
       bodySizeLimit: '15mb',
     },
+    outputFileTracingIncludes: {
+      '/api/**/*': ['./prisma/dev.db'],
+    },
   },
 };
 
 export default nextConfig;
+
