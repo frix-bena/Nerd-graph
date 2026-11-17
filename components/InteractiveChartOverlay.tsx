@@ -25,9 +25,13 @@ interface InteractiveChartOverlayProps {
 function getZoneStyles(type: VisualProofZone['type']) {
   switch (type) {
     case 'FVG':
+    case 'SUPPORT':
       return {
         box: 'bg-[#DBEAFE]/55 border-[#1D4ED8] border-dashed',
         badge: 'bg-[#1D4ED8] text-white border-[#0F172A]',
+        svgFill: 'rgba(219, 234, 254, 0.45)',
+        svgStroke: '#1D4ED8',
+        svgDash: '6 4',
         canvasFill: 'rgba(219, 234, 254, 0.55)',
         canvasStroke: '#1D4ED8',
         canvasDash: [8, 6],
@@ -35,9 +39,13 @@ function getZoneStyles(type: VisualProofZone['type']) {
         badgeText: '#FFFFFF',
       };
     case 'OB':
+    case 'SUPPLY_DEMAND':
       return {
         box: 'bg-[#FEF3C7]/60 border-[#F59E0B] border-solid',
         badge: 'bg-[#F59E0B] text-[#0F172A] border-[#0F172A]',
+        svgFill: 'rgba(254, 243, 199, 0.48)',
+        svgStroke: '#F59E0B',
+        svgDash: '5 3',
         canvasFill: 'rgba(254, 243, 199, 0.60)',
         canvasStroke: '#F59E0B',
         canvasDash: [],
@@ -45,9 +53,13 @@ function getZoneStyles(type: VisualProofZone['type']) {
         badgeText: '#0F172A',
       };
     case 'LIQUIDITY':
+    case 'RESISTANCE':
       return {
         box: 'bg-[#FEF2F2]/60 border-[#EF4444] border-dashed',
         badge: 'bg-[#EF4444] text-white border-[#0F172A]',
+        svgFill: 'rgba(254, 242, 242, 0.48)',
+        svgStroke: '#EF4444',
+        svgDash: '6 4',
         canvasFill: 'rgba(254, 242, 242, 0.60)',
         canvasStroke: '#EF4444',
         canvasDash: [8, 6],
@@ -59,6 +71,9 @@ function getZoneStyles(type: VisualProofZone['type']) {
       return {
         box: 'bg-[#EFF6FF]/50 border-[#0F172A] border-dashed',
         badge: 'bg-[#0F172A] text-white border-[#0F172A]',
+        svgFill: 'rgba(239, 246, 255, 0.42)',
+        svgStroke: '#0F172A',
+        svgDash: '5 4',
         canvasFill: 'rgba(239, 246, 255, 0.50)',
         canvasStroke: '#0F172A',
         canvasDash: [8, 6],
@@ -79,13 +94,46 @@ export default function InteractiveChartOverlay({
   const [zoomScale, setZoomScale] = useState<number>(1);
   const [isDownloading, setIsDownloading] = useState(false);
 
+  const resolvedImageUrl = imageUrl || signal.chartImageUrl || '';
   const annotations = signal.visual_proof_annotations;
-  const entryY = annotations?.entry_y_percent ?? 62;
-  const slY = annotations?.stop_loss_y_percent ?? 80;
-  const tp1Y = annotations?.tp1_y_percent ?? 35;
-  const tp2Y = annotations?.tp2_y_percent ?? 18;
-  const zones = annotations?.zones ?? [];
-  const predictionPath = annotations?.prediction_path ?? [];
+
+  const entryY =
+    signal.entry_y ?? annotations?.entry_y ?? annotations?.entry_y_percent ?? 62;
+  const slY =
+    signal.stop_loss_y ??
+    annotations?.stop_loss_y ??
+    annotations?.stop_loss_y_percent ??
+    80;
+  const tp1Y =
+    signal.tp1_y ?? annotations?.tp1_y ?? annotations?.tp1_y_percent ?? 35;
+  const tp2Y =
+    signal.tp2_y ?? annotations?.tp2_y ?? annotations?.tp2_y_percent ?? 18;
+
+  const rawZones =
+    (Array.isArray(signal.zones) && signal.zones.length > 0
+      ? signal.zones
+      : annotations?.zones) ?? [];
+
+  const zones = rawZones.map((z) => ({
+    ...z,
+    x_start: z.x_start ?? z.x_start_percent ?? 25,
+    y_start: z.y_start ?? z.y_start_percent ?? 50,
+    x_end: z.x_end ?? z.x_end_percent ?? 78,
+    y_end: z.y_end ?? z.y_end_percent ?? 62,
+    label: z.label || z.type || 'Key Zone',
+    type: z.type || 'FVG',
+  }));
+
+  const rawPath =
+    (Array.isArray(signal.prediction_path) && signal.prediction_path.length > 0
+      ? signal.prediction_path
+      : annotations?.prediction_path) ?? [];
+
+  const predictionPath = rawPath.map((pt) => ({
+    x: pt.x ?? pt.x_percent ?? 50,
+    y: pt.y ?? pt.y_percent ?? 50,
+    label: pt.label ?? pt.note ?? '',
+  }));
 
   const priceLines = [
     {
@@ -116,10 +164,10 @@ export default function InteractiveChartOverlay({
       id: 'entry',
       label: `ENTRY: ${signal.entry_price.toLocaleString()}`,
       yPercent: entryY,
-      lineClass: 'h-[2px] bg-[#F59E0B]',
+      lineClass: 'border-b-2 border-dashed border-[#F59E0B]',
       badgeClass: 'bg-[#FEF3C7] border-[#0F172A] text-[#0F172A] font-extrabold',
       strokeColor: '#F59E0B',
-      dashed: false,
+      dashed: true,
       badgeBg: '#FEF3C7',
       badgeBorder: '#0F172A',
       badgeText: '#0F172A',
@@ -157,7 +205,7 @@ export default function InteractiveChartOverlay({
   }, [isLightboxOpen]);
 
   const handleOpenLightbox = () => {
-    if (!imageUrl) return;
+    if (!resolvedImageUrl) return;
     setZoomScale(1);
     setIsLightboxOpen(true);
   };
@@ -175,14 +223,13 @@ export default function InteractiveChartOverlay({
   };
 
   const handleModalImageClick = () => {
-    // Allow clicking the image in the modal to zoom out (or toggle between 1x and 0.75x / 1.5x)
     setZoomScale((prev) => (prev > 1 ? 1 : prev === 1 ? 0.75 : 1));
   };
 
   const handleDownloadProof = useCallback(
     async (e?: React.MouseEvent) => {
       if (e) e.stopPropagation();
-      if (!imageUrl || isDownloading) return;
+      if (!resolvedImageUrl || isDownloading) return;
 
       setIsDownloading(true);
       const filename = `${(signal.asset || 'chart').toLowerCase()}-${(
@@ -196,7 +243,7 @@ export default function InteractiveChartOverlay({
         await new Promise<void>((resolve, reject) => {
           img.onload = () => resolve();
           img.onerror = () => reject(new Error('Failed to load chart image for export'));
-          img.src = imageUrl;
+          img.src = resolvedImageUrl;
         });
 
         const width = 1600;
@@ -210,19 +257,17 @@ export default function InteractiveChartOverlay({
           throw new Error('Canvas 2D context unavailable');
         }
 
-        // Background + base chart image
         ctx.fillStyle = '#F8FAFC';
         ctx.fillRect(0, 0, width, height);
         ctx.drawImage(img, 0, 0, width, height);
 
         if (showOverlays) {
-          // 1. Draw SMC Zones
           if (showZones) {
             zones.forEach((zone) => {
-              const leftPct = Math.min(zone.x_start_percent, zone.x_end_percent);
-              const topPct = Math.min(zone.y_start_percent, zone.y_end_percent);
-              const widthPct = Math.max(4, Math.abs(zone.x_end_percent - zone.x_start_percent));
-              const heightPct = Math.max(2.5, Math.abs(zone.y_end_percent - zone.y_start_percent));
+              const leftPct = Math.min(zone.x_start, zone.x_end);
+              const topPct = Math.min(zone.y_start, zone.y_end);
+              const widthPct = Math.max(4, Math.abs(zone.x_end - zone.x_start));
+              const heightPct = Math.max(2.5, Math.abs(zone.y_end - zone.y_start));
 
               const x = (leftPct / 100) * width;
               const y = (topPct / 100) * height;
@@ -241,7 +286,6 @@ export default function InteractiveChartOverlay({
               ctx.stroke();
               ctx.restore();
 
-              // Zone badge
               const badgeText = `${zone.type} · ${zone.label}`;
               ctx.save();
               ctx.font = 'bold 16px monospace';
@@ -266,7 +310,6 @@ export default function InteractiveChartOverlay({
             });
           }
 
-          // 2. Draw Projected Path
           if (showPath && predictionPath.length >= 2) {
             ctx.save();
             ctx.strokeStyle = '#0F172A';
@@ -275,8 +318,8 @@ export default function InteractiveChartOverlay({
             ctx.lineJoin = 'round';
             ctx.beginPath();
             predictionPath.forEach((pt, idx) => {
-              const px = (pt.x_percent / 100) * width;
-              const py = (pt.y_percent / 100) * height;
+              const px = (pt.x / 100) * width;
+              const py = (pt.y / 100) * height;
               if (idx === 0) ctx.moveTo(px, py);
               else ctx.lineTo(px, py);
             });
@@ -289,8 +332,8 @@ export default function InteractiveChartOverlay({
             ctx.restore();
 
             predictionPath.forEach((pt) => {
-              const px = (pt.x_percent / 100) * width;
-              const py = (pt.y_percent / 100) * height;
+              const px = (pt.x / 100) * width;
+              const py = (pt.y / 100) * height;
 
               ctx.save();
               ctx.fillStyle = '#F59E0B';
@@ -301,9 +344,9 @@ export default function InteractiveChartOverlay({
               ctx.fill();
               ctx.stroke();
 
-              if (pt.note) {
+              if (pt.label) {
                 ctx.font = 'bold 14px monospace';
-                const noteW = ctx.measureText(pt.note).width + 16;
+                const noteW = ctx.measureText(pt.label).width + 16;
                 const noteH = 24;
                 ctx.fillStyle = 'rgba(15, 23, 42, 0.92)';
                 ctx.beginPath();
@@ -311,13 +354,12 @@ export default function InteractiveChartOverlay({
                 ctx.fill();
                 ctx.fillStyle = '#FFFFFF';
                 ctx.textBaseline = 'middle';
-                ctx.fillText(pt.note, px - noteW / 2 + 8, py + 12 + noteH / 2);
+                ctx.fillText(pt.label, px - noteW / 2 + 8, py + 12 + noteH / 2);
               }
               ctx.restore();
             });
           }
 
-          // 3. Draw Price Lines (TP2, TP1, ENTRY, SL)
           priceLines.forEach((line) => {
             const clampedY = Math.min(96, Math.max(4, line.yPercent));
             const y = (clampedY / 100) * height;
@@ -332,7 +374,7 @@ export default function InteractiveChartOverlay({
 
             ctx.strokeStyle = line.strokeColor;
             ctx.lineWidth = 3;
-            ctx.setLineDash(line.dashed ? [10, 8] : []);
+            ctx.setLineDash([10, 8]);
             ctx.beginPath();
             ctx.moveTo(lineStartX, y);
             ctx.lineTo(badgeLeftX - 10, y);
@@ -362,9 +404,8 @@ export default function InteractiveChartOverlay({
         link.click();
         document.body.removeChild(link);
       } catch {
-        // Fallback direct download if canvas export fails
         const link = document.createElement('a');
-        link.href = imageUrl;
+        link.href = resolvedImageUrl;
         link.download = filename;
         document.body.appendChild(link);
         link.click();
@@ -373,35 +414,178 @@ export default function InteractiveChartOverlay({
         setIsDownloading(false);
       }
     },
-    [imageUrl, isDownloading, signal.asset, signal.timeframe, showOverlays, showZones, showPath, zones, predictionPath, priceLines]
+    [
+      resolvedImageUrl,
+      isDownloading,
+      signal.asset,
+      signal.timeframe,
+      showOverlays,
+      showZones,
+      showPath,
+      zones,
+      predictionPath,
+      priceLines,
+    ]
   );
 
   const renderOverlays = () => {
     if (!showOverlays) return null;
     return (
       <div className="absolute inset-0 pointer-events-none z-10 overflow-hidden">
-        {/* 1. Institutional SMC Zones (FVG, OB, LIQUIDITY, BOS) */}
+        {/* Responsive SVG viewBox="0 0 100 100" preserveAspectRatio="none" layered directly over <img> */}
+        <svg
+          viewBox="0 0 100 100"
+          preserveAspectRatio="none"
+          className="absolute inset-0 w-full h-full overflow-visible"
+          aria-label="Visual Proof Chart Overlay"
+        >
+          <defs>
+            <marker
+              id="smc-arrow"
+              viewBox="0 0 10 10"
+              refX="6"
+              refY="5"
+              markerWidth="4.5"
+              markerHeight="4.5"
+              orient="auto-start-reverse"
+            >
+              <path d="M 0 1 L 10 5 L 0 9 z" fill="#1D4ED8" />
+            </marker>
+          </defs>
+
+          {/* 1. Shaded Zone Boxes (FVG / Order Block / Key Support-Resistance zones) */}
+          {showZones &&
+            zones.map((zone, idx) => {
+              const left = Math.min(zone.x_start, zone.x_end);
+              const top = Math.min(zone.y_start, zone.y_end);
+              const width = Math.max(4, Math.abs(zone.x_end - zone.x_start));
+              const height = Math.max(2.5, Math.abs(zone.y_end - zone.y_start));
+              const styles = getZoneStyles(zone.type);
+
+              return (
+                <g key={`svg-zone-${idx}`}>
+                  <rect
+                    x={left}
+                    y={top}
+                    width={width}
+                    height={height}
+                    rx="0.6"
+                    fill={styles.svgFill}
+                    stroke={styles.svgStroke}
+                    strokeWidth="2"
+                    strokeDasharray={styles.svgDash}
+                    vectorEffect="non-scaling-stroke"
+                  />
+                  <text
+                    x={left + 1}
+                    y={Math.max(3, top + 2.5)}
+                    fontSize="2.2"
+                    fill={styles.svgStroke}
+                    fillOpacity="0"
+                  >
+                    {zone.label}
+                  </text>
+                </g>
+              );
+            })}
+
+          {/* 2. Horizontal Dashed Lines for Entry, Stop Loss, TP1, and TP2 */}
+          {priceLines.map((line) => {
+            const clampedY = Math.min(96, Math.max(4, line.yPercent));
+            return (
+              <g key={`svg-line-${line.id}`}>
+                <line
+                  x1="0"
+                  y1={clampedY}
+                  x2="100"
+                  y2={clampedY}
+                  stroke={line.strokeColor}
+                  strokeWidth="2"
+                  strokeDasharray="6 4"
+                  vectorEffect="non-scaling-stroke"
+                />
+                <text
+                  x="2"
+                  y={Math.max(3, clampedY - 1)}
+                  fontSize="2.2"
+                  fill={line.strokeColor}
+                  fillOpacity="0"
+                >
+                  {line.label}
+                </text>
+              </g>
+            );
+          })}
+
+          {/* 3. Dashed Trajectory Arrow (prediction_path) */}
+          {showPath && predictionPath.length >= 2 && (
+            <g>
+              <polyline
+                fill="none"
+                stroke="#0F172A"
+                strokeWidth="3.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                vectorEffect="non-scaling-stroke"
+                points={predictionPath.map((pt) => `${pt.x},${pt.y}`).join(' ')}
+              />
+              <polyline
+                fill="none"
+                stroke="#1D4ED8"
+                strokeWidth="2.2"
+                strokeDasharray="6 4"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                markerEnd="url(#smc-arrow)"
+                vectorEffect="non-scaling-stroke"
+                points={predictionPath.map((pt) => `${pt.x},${pt.y}`).join(' ')}
+              />
+              {predictionPath.map((pt, idx) => (
+                <g key={`svg-path-node-${idx}`}>
+                  <circle
+                    cx={pt.x}
+                    cy={pt.y}
+                    r="0.9"
+                    fill="#F59E0B"
+                    stroke="#0F172A"
+                    strokeWidth="1.5"
+                    vectorEffect="non-scaling-stroke"
+                  />
+                  {pt.label && (
+                    <text
+                      x={pt.x}
+                      y={Math.min(98, pt.y + 3)}
+                      fontSize="2"
+                      fill="#0F172A"
+                      fillOpacity="0"
+                    >
+                      {pt.label}
+                    </text>
+                  )}
+                </g>
+              ))}
+            </g>
+          )}
+        </svg>
+
+        {/* Crisp HTML Badges for Zones */}
         {showZones &&
           zones.map((zone, idx) => {
-            const left = Math.min(zone.x_start_percent, zone.x_end_percent);
-            const top = Math.min(zone.y_start_percent, zone.y_end_percent);
-            const width = Math.max(4, Math.abs(zone.x_end_percent - zone.x_start_percent));
-            const height = Math.max(2.5, Math.abs(zone.y_end_percent - zone.y_start_percent));
+            const left = Math.min(zone.x_start, zone.x_end);
+            const top = Math.min(zone.y_start, zone.y_end);
             const styles = getZoneStyles(zone.type);
 
             return (
               <div
-                key={`${zone.type}-${idx}`}
+                key={`zone-badge-${zone.type}-${idx}`}
                 style={{
                   left: `${left}%`,
                   top: `${top}%`,
-                  width: `${width}%`,
-                  height: `${height}%`,
                 }}
-                className={`absolute rounded-md border-2 transition-all ${styles.box}`}
+                className="absolute -translate-y-2.5 translate-x-1"
               >
                 <span
-                  className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] sm:text-[10px] font-mono font-bold border shadow-sm -translate-y-2.5 translate-x-1 whitespace-nowrap ${styles.badge}`}
+                  className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] sm:text-[10px] font-mono font-bold border shadow-sm whitespace-nowrap ${styles.badge}`}
                 >
                   <span>{zone.type}</span>
                   <span className="opacity-75">·</span>
@@ -411,79 +595,34 @@ export default function InteractiveChartOverlay({
             );
           })}
 
-        {/* 2. Projected Price Action Path (SVG Vector Polyline & Nodes) */}
-        {showPath && predictionPath.length >= 2 && (
-          <>
-            <svg
-              viewBox="0 0 100 100"
-              preserveAspectRatio="none"
-              className="absolute inset-0 w-full h-full overflow-visible"
+        {/* Crisp HTML Nodes & Labels for Prediction Path */}
+        {showPath &&
+          predictionPath.length >= 2 &&
+          predictionPath.map((pt, idx) => (
+            <div
+              key={`path-pt-${idx}`}
+              style={{
+                left: `${pt.x}%`,
+                top: `${pt.y}%`,
+              }}
+              className="absolute -translate-x-1/2 -translate-y-1/2 flex flex-col items-center"
             >
-              <defs>
-                <marker
-                  id="smc-arrow"
-                  viewBox="0 0 10 10"
-                  refX="6"
-                  refY="5"
-                  markerWidth="4.5"
-                  markerHeight="4.5"
-                  orient="auto-start-reverse"
-                >
-                  <path d="M 0 1 L 10 5 L 0 9 z" fill="#1D4ED8" />
-                </marker>
-              </defs>
-              <polyline
-                fill="none"
-                stroke="#0F172A"
-                strokeWidth="0.9"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                points={predictionPath
-                  .map((pt) => `${pt.x_percent},${pt.y_percent}`)
-                  .join(' ')}
-              />
-              <polyline
-                fill="none"
-                stroke="#1D4ED8"
-                strokeWidth="0.55"
-                strokeDasharray="1.5 1"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                markerEnd="url(#smc-arrow)"
-                points={predictionPath
-                  .map((pt) => `${pt.x_percent},${pt.y_percent}`)
-                  .join(' ')}
-              />
-            </svg>
+              <span className="w-2.5 h-2.5 rounded-full bg-[#F59E0B] border-2 border-[#0F172A] shadow" />
+              {pt.label && (
+                <span className="mt-1 px-1.5 py-0.5 rounded bg-[#0F172A]/90 text-white font-mono text-[9px] font-bold whitespace-nowrap shadow">
+                  {pt.label}
+                </span>
+              )}
+            </div>
+          ))}
 
-            {predictionPath.map((pt, idx) => (
-              <div
-                key={`path-pt-${idx}`}
-                style={{
-                  left: `${pt.x_percent}%`,
-                  top: `${pt.y_percent}%`,
-                }}
-                className="absolute -translate-x-1/2 -translate-y-1/2 flex flex-col items-center"
-              >
-                <span className="w-2.5 h-2.5 rounded-full bg-[#F59E0B] border-2 border-[#0F172A] shadow" />
-                {pt.note && (
-                  <span className="mt-1 px-1.5 py-0.5 rounded bg-[#0F172A]/90 text-white font-mono text-[9px] font-bold whitespace-nowrap shadow">
-                    {pt.note}
-                  </span>
-                )}
-              </div>
-            ))}
-          </>
-        )}
-
-        {/* 3. Calibrated Y-Axis Execution Level Lines (Entry, SL, TP1, TP2) */}
+        {/* Crisp Right-Aligned Price Badges for Entry, Stop Loss, TP1, TP2 */}
         {priceLines.map((line) => (
           <div
-            key={line.id}
+            key={`badge-${line.id}`}
             style={{ top: `${Math.min(96, Math.max(4, line.yPercent))}%` }}
-            className="absolute left-0 right-0 -translate-y-1/2 px-3 sm:px-4 flex items-center gap-2"
+            className="absolute right-2 sm:right-3 -translate-y-1/2 flex items-center"
           >
-            <div className={`flex-1 ${line.lineClass}`} />
             <span
               className={`px-2 py-0.5 rounded-md border font-mono text-[10px] sm:text-[11px] font-bold shadow-sm flex items-center gap-1 whitespace-nowrap ${line.badgeClass}`}
             >
@@ -499,28 +638,28 @@ export default function InteractiveChartOverlay({
   return (
     <>
       <div className="relative w-full rounded-2xl bg-white border border-[#CBD5E1] overflow-hidden shadow-saas-card group">
-        {/* Chart Image & Visual Proof Coordinate Canvas (Clickable to Zoom / Inspect) */}
+        {/* Chart Image & Visual Proof Coordinate Canvas */}
         <div
-          role={imageUrl ? 'button' : undefined}
-          tabIndex={imageUrl ? 0 : undefined}
-          aria-label={imageUrl ? 'Click chart proof image to zoom or download' : undefined}
+          role={resolvedImageUrl ? 'button' : undefined}
+          tabIndex={resolvedImageUrl ? 0 : undefined}
+          aria-label={resolvedImageUrl ? 'Click chart proof image to zoom or download' : undefined}
           onClick={handleOpenLightbox}
           onKeyDown={(e) => {
-            if (imageUrl && (e.key === 'Enter' || e.key === ' ')) {
+            if (resolvedImageUrl && (e.key === 'Enter' || e.key === ' ')) {
               e.preventDefault();
               handleOpenLightbox();
             }
           }}
           className={`relative w-full aspect-[16/10] bg-[#F8FAFC] flex items-center justify-center overflow-hidden ${
-            imageUrl ? 'cursor-zoom-in' : ''
+            resolvedImageUrl ? 'cursor-zoom-in' : ''
           }`}
         >
-          {imageUrl ? (
+          {resolvedImageUrl ? (
             <>
               <img
-                src={imageUrl}
+                src={resolvedImageUrl}
                 alt="Uploaded Financial Chart Proof"
-                className="w-full h-full object-fill select-none"
+                className="w-full h-full object-fill select-none block"
               />
 
               {/* Hover Quick Action Badge on Image */}
@@ -600,7 +739,7 @@ export default function InteractiveChartOverlay({
               )}
             </button>
 
-            {imageUrl && (
+            {resolvedImageUrl && (
               <>
                 <button
                   type="button"
@@ -629,7 +768,7 @@ export default function InteractiveChartOverlay({
       </div>
 
       {/* Interactive Lightbox Modal for Zooming In/Out & Downloading Image Proof */}
-      {isLightboxOpen && imageUrl && (
+      {isLightboxOpen && resolvedImageUrl && (
         <div
           role="dialog"
           aria-modal="true"
@@ -654,7 +793,6 @@ export default function InteractiveChartOverlay({
             </div>
 
             <div className="flex flex-wrap items-center gap-2">
-              {/* Zoom Out / Reset / Zoom In Controls */}
               <div className="flex items-center rounded-lg border border-white/20 bg-white/10 p-0.5">
                 <button
                   type="button"
@@ -697,7 +835,6 @@ export default function InteractiveChartOverlay({
                 </button>
               </div>
 
-              {/* Toggle Overlays inside Modal */}
               <button
                 type="button"
                 onClick={() => setShowOverlays(!showOverlays)}
@@ -716,7 +853,6 @@ export default function InteractiveChartOverlay({
                 )}
               </button>
 
-              {/* Download Button inside Modal */}
               <button
                 type="button"
                 onClick={handleDownloadProof}
@@ -727,7 +863,6 @@ export default function InteractiveChartOverlay({
                 <span>{isDownloading ? 'Downloading…' : 'Download Image'}</span>
               </button>
 
-              {/* Close Modal Button */}
               <button
                 type="button"
                 onClick={() => setIsLightboxOpen(false)}
@@ -764,9 +899,9 @@ export default function InteractiveChartOverlay({
               title="Click image to zoom out / toggle scale"
             >
               <img
-                src={imageUrl}
+                src={resolvedImageUrl}
                 alt="Zoomed Financial Chart Proof"
-                className="w-full h-full object-fill select-none"
+                className="w-full h-full object-fill select-none block"
               />
               {renderOverlays()}
             </div>

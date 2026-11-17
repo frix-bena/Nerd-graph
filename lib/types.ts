@@ -1,12 +1,24 @@
 export type MarketBias = 'BULLISH' | 'BEARISH' | 'NEUTRAL';
 export type TradeRecommendation = 'BUY' | 'SELL' | 'WAIT';
 export type SetupType = 'BUY SETUP' | 'SELL SETUP' | 'NO TRADE' | 'INVALID_IMAGE';
-export type MarketPhase = 'Accumulation' | 'Manipulation' | 'Distribution' | 'Re-accumulation' | string;
+export type ChartType = 'CANDLESTICK' | 'LINE_OR_OVERLAID' | 'AREA' | string;
+export type AnalysisMode = 'SMC_CANDLESTICK' | 'MACRO_PRICE_ACTION';
+export type MarketPhase =
+  | 'Accumulation'
+  | 'Expansion'
+  | 'Pullback'
+  | 'Consolidation'
+  | 'Manipulation'
+  | 'Distribution'
+  | 'Re-accumulation'
+  | string;
 export type SignalStatus = 'ACTIVE' | 'HIT_TP1' | 'HIT_TP2' | 'STOPPED' | 'INVALIDATED';
 
 export interface MarketMechanicsExplanation {
+  current_market_phase: MarketPhase;
   current_phase: MarketPhase;
   what_is_happening: string;
+  how_it_works_steps: string[];
   how_it_works_step_by_step: string[];
 }
 
@@ -27,11 +39,22 @@ export interface TradeExecution {
   invalidation_condition: string;
 }
 
-export type AnnotationZoneType = 'FVG' | 'OB' | 'LIQUIDITY' | 'BOS';
+export type AnnotationZoneType =
+  | 'FVG'
+  | 'OB'
+  | 'LIQUIDITY'
+  | 'BOS'
+  | 'SUPPORT'
+  | 'RESISTANCE'
+  | 'SUPPLY_DEMAND';
 
 export interface VisualProofZone {
   label: string;
   type: AnnotationZoneType;
+  x_start: number;
+  y_start: number;
+  x_end: number;
+  y_end: number;
   x_start_percent: number;
   y_start_percent: number;
   x_end_percent: number;
@@ -39,12 +62,19 @@ export interface VisualProofZone {
 }
 
 export interface PredictionPathPoint {
+  x: number;
+  y: number;
+  label: string;
   x_percent: number;
   y_percent: number;
   note: string;
 }
 
 export interface VisualProofAnnotations {
+  entry_y: number;
+  stop_loss_y: number;
+  tp1_y: number;
+  tp2_y: number;
   entry_y_percent: number;
   stop_loss_y_percent: number;
   tp1_y_percent: number;
@@ -56,8 +86,19 @@ export interface VisualProofAnnotations {
 export interface InstitutionalSMCAnalysis {
   asset: string;
   timeframe: string;
+  chart_type?: ChartType;
+  analysis_mode?: AnalysisMode;
   bias: MarketBias;
   confidence_score: number;
+  current_market_phase: MarketPhase;
+  what_is_happening: string;
+  how_it_works_steps: string[];
+  entry_y: number;
+  stop_loss_y: number;
+  tp1_y: number;
+  tp2_y: number;
+  zones: VisualProofZone[];
+  prediction_path: PredictionPathPoint[];
   market_mechanics_explanation: MarketMechanicsExplanation;
   trading_tools_analysis: TradingToolsAnalysis;
   trade_execution: TradeExecution;
@@ -75,6 +116,7 @@ export interface TradeAnalysis extends InstitutionalSMCAnalysis {
   key_confluences: string[];
   invalidation_condition: string;
   summary: string;
+  chartImageUrl?: string;
 }
 
 export interface SMCSignalOutput extends InstitutionalSMCAnalysis {
@@ -88,6 +130,7 @@ export interface SMCSignalOutput extends InstitutionalSMCAnalysis {
   key_confluences: string[];
   invalidation_condition: string;
   analysis_summary: string;
+  chartImageUrl?: string;
   error?: string;
 }
 

@@ -13,12 +13,12 @@ import {
   Terminal,
   Crosshair,
   BarChart2,
-  Layers,
   Sparkles,
   RotateCcw,
   Activity,
   Compass,
   Code2,
+  FileText,
 } from 'lucide-react';
 
 interface SignalDashboardProps {
@@ -57,24 +57,93 @@ export default function SignalDashboard({
   const isBuy = setupType === 'BUY SETUP' || signal.trade_recommendation === 'BUY';
   const isSell = setupType === 'SELL SETUP' || signal.trade_recommendation === 'SELL';
   const bias = signal.bias || signal.market_bias;
-  const currentPhase = signal.market_mechanics_explanation?.current_phase || 'Manipulation';
+  const chartType = signal.chart_type || 'CANDLESTICK';
+  const analysisMode =
+    signal.analysis_mode ||
+    (String(chartType).toUpperCase().includes('LINE')
+      ? 'MACRO_PRICE_ACTION'
+      : 'SMC_CANDLESTICK');
+
+  const currentMarketPhase =
+    signal.current_market_phase ||
+    signal.market_mechanics_explanation?.current_market_phase ||
+    signal.market_mechanics_explanation?.current_phase ||
+    'Expansion';
+
   const whatIsHappening =
-    signal.market_mechanics_explanation?.what_is_happening || signal.analysis_summary;
-  const steps = signal.market_mechanics_explanation?.how_it_works_step_by_step || [];
+    signal.what_is_happening ||
+    signal.market_mechanics_explanation?.what_is_happening ||
+    signal.analysis_summary;
+
+  const howItWorksSteps =
+    (Array.isArray(signal.how_it_works_steps) && signal.how_it_works_steps.length > 0
+      ? signal.how_it_works_steps
+      : signal.market_mechanics_explanation?.how_it_works_steps ||
+        signal.market_mechanics_explanation?.how_it_works_step_by_step) || [];
+
+  const technicalSummary = signal.analysis_summary || whatIsHappening;
   const tools = signal.trading_tools_analysis;
   const rrr = signal.trade_execution?.risk_to_reward || signal.risk_reward_ratio;
   const invalidation =
     signal.trade_execution?.invalidation_condition || signal.invalidation_condition;
 
+  const entryY =
+    signal.entry_y ??
+    signal.visual_proof_annotations?.entry_y ??
+    signal.visual_proof_annotations?.entry_y_percent ??
+    62;
+  const stopLossY =
+    signal.stop_loss_y ??
+    signal.visual_proof_annotations?.stop_loss_y ??
+    signal.visual_proof_annotations?.stop_loss_y_percent ??
+    80;
+  const tp1Y =
+    signal.tp1_y ??
+    signal.visual_proof_annotations?.tp1_y ??
+    signal.visual_proof_annotations?.tp1_y_percent ??
+    35;
+  const tp2Y =
+    signal.tp2_y ??
+    signal.visual_proof_annotations?.tp2_y ??
+    signal.visual_proof_annotations?.tp2_y_percent ??
+    18;
+  const zones = signal.zones || signal.visual_proof_annotations?.zones || [];
+  const predictionPath =
+    signal.prediction_path || signal.visual_proof_annotations?.prediction_path || [];
+
   const strictSchemaJson = {
     asset: signal.asset,
     timeframe: signal.timeframe,
+    chart_type: chartType,
+    analysis_mode: analysisMode,
     bias,
     confidence_score: signal.confidence_score,
+    current_market_phase: currentMarketPhase,
+    what_is_happening: whatIsHappening,
+    how_it_works_steps: howItWorksSteps,
+    entry_y: entryY,
+    stop_loss_y: stopLossY,
+    tp1_y: tp1Y,
+    tp2_y: tp2Y,
+    zones: zones.map((z) => ({
+      x_start: z.x_start ?? z.x_start_percent,
+      y_start: z.y_start ?? z.y_start_percent,
+      x_end: z.x_end ?? z.x_end_percent,
+      y_end: z.y_end ?? z.y_end_percent,
+      label: z.label,
+      type: z.type,
+    })),
+    prediction_path: predictionPath.map((pt) => ({
+      x: pt.x ?? pt.x_percent,
+      y: pt.y ?? pt.y_percent,
+      label: pt.label ?? pt.note,
+    })),
     market_mechanics_explanation: {
-      current_phase: currentPhase,
+      current_market_phase: currentMarketPhase,
+      current_phase: currentMarketPhase,
       what_is_happening: whatIsHappening,
-      how_it_works_step_by_step: steps,
+      how_it_works_steps: howItWorksSteps,
+      how_it_works_step_by_step: howItWorksSteps,
     },
     trading_tools_analysis: {
       market_structure: tools?.market_structure || 'N/A',
@@ -120,7 +189,7 @@ export default function SignalDashboard({
 
   return (
     <div className="w-full space-y-6">
-      {/* Top Banner with Asset Badge, Bias, Current Phase, and Quick Actions */}
+      {/* Top Banner with Asset Badge, Bias, Current Market Phase, and Quick Actions */}
       <div className="saas-card rounded-2xl p-5">
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
           <div className="flex items-center gap-3.5">
@@ -162,7 +231,12 @@ export default function SignalDashboard({
                   {setupType}
                 </span>
                 <span className="text-xs font-mono font-bold px-2.5 py-0.5 rounded-full bg-[#FEF3C7] border border-[#F59E0B] text-[#0F172A]">
-                  Phase: {currentPhase}
+                  Phase: {currentMarketPhase}
+                </span>
+                <span className="text-[11px] font-mono font-semibold px-2.5 py-0.5 rounded-full bg-[#EFF6FF] border border-[#BFDBFE] text-[#1D4ED8]">
+                  {analysisMode === 'MACRO_PRICE_ACTION'
+                    ? 'Macro Price Action & Trend Mode'
+                    : 'Smart Money Concepts (SMC) Mode'}
                 </span>
               </div>
               <p className="text-xs text-[#475569] mt-1">
@@ -241,7 +315,7 @@ export default function SignalDashboard({
           <div className="flex items-center justify-between">
             <span className="text-xs font-mono font-bold uppercase tracking-wider text-[#1D4ED8] flex items-center gap-1.5">
               <Code2 className="w-4 h-4" />
-              <span>Strict Institutional SMC JSON Output</span>
+              <span>Strict Vision AI JSON Output</span>
             </span>
             <button
               type="button"
@@ -260,32 +334,73 @@ export default function SignalDashboard({
 
       {/* Split Layout: Chart View Side-by-Side with Institutional Mechanics & Tools Breakdown */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        {/* Left Column: Chart with Normalized Coordinate SMC Overlays & Market Mechanics (7 cols on lg) */}
+        {/* Left Column: Chart with Normalized Coordinate Visual Proof Overlays + Technical Summary + Market Mechanics & How It Works */}
         <div className="lg:col-span-7 space-y-4">
-          <InteractiveChartOverlay imageUrl={chartImage} signal={signal} />
+          <InteractiveChartOverlay
+            imageUrl={chartImage || signal.chartImageUrl || ''}
+            signal={signal}
+          />
 
-          {/* Market Mechanics Explanation Box */}
-          <div className="saas-card rounded-2xl p-5 space-y-4">
-            <div className="flex flex-wrap items-center justify-between gap-2 pb-3 border-b border-[#E2E8F0]">
-              <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-[#1D4ED8] font-mono">
-                <Sparkles className="w-4 h-4 text-[#1D4ED8]" />
-                <span>Market Mechanics &amp; Order Flow</span>
+          {/* 1. Vision AI Technical Summary */}
+          <div className="saas-card rounded-2xl p-5 space-y-3">
+            <div className="flex flex-wrap items-center justify-between gap-2 pb-2.5 border-b border-[#E2E8F0]">
+              <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-[#0F172A] font-mono">
+                <FileText className="w-4 h-4 text-[#1D4ED8]" />
+                <span>Vision AI Technical Summary</span>
               </div>
-              <span className="px-2.5 py-0.5 rounded-full bg-[#EFF6FF] border border-[#93C5FD] text-[11px] font-mono font-bold text-[#1D4ED8]">
-                {currentPhase} Phase
+              <span className="px-2.5 py-0.5 rounded-full bg-[#F8FAFC] border border-[#CBD5E1] text-[10px] font-mono font-bold text-[#475569]">
+                {analysisMode === 'MACRO_PRICE_ACTION'
+                  ? 'Line / Overlaid Chart Analysis'
+                  : 'Candlestick SMC Analysis'}
               </span>
             </div>
 
             <p className="text-sm text-[#0F172A] leading-relaxed font-medium">
-              {whatIsHappening}
+              {technicalSummary}
             </p>
 
-            {steps.length > 0 && (
+            {signal.key_confluences?.length > 0 && (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
+                {signal.key_confluences.map((confluence, idx) => (
+                  <div
+                    key={idx}
+                    className="flex items-start gap-2 rounded-lg bg-[#F8FAFC] border border-[#E2E8F0] px-3 py-2 text-xs text-[#0F172A]"
+                  >
+                    <CheckCircle2 className="w-3.5 h-3.5 text-[#1D4ED8] shrink-0 mt-0.5" />
+                    <span className="leading-snug font-medium">{confluence}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* 2. Dedicated "Market Mechanics & How It Works" Section right below Vision AI Technical Summary */}
+          <div className="saas-card rounded-2xl p-5 space-y-4">
+            <div className="flex flex-wrap items-center justify-between gap-2 pb-3 border-b border-[#E2E8F0]">
+              <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-[#1D4ED8] font-mono">
+                <Sparkles className="w-4 h-4 text-[#1D4ED8]" />
+                <span>Market Mechanics &amp; How It Works</span>
+              </div>
+              <span className="px-2.5 py-0.5 rounded-full bg-[#EFF6FF] border border-[#93C5FD] text-[11px] font-mono font-bold text-[#1D4ED8]">
+                Phase: {currentMarketPhase}
+              </span>
+            </div>
+
+            <div className="space-y-1.5">
+              <p className="text-[11px] font-mono font-bold uppercase tracking-wider text-[#475569]">
+                What Is Happening Now
+              </p>
+              <p className="text-sm text-[#0F172A] leading-relaxed font-medium">
+                {whatIsHappening}
+              </p>
+            </div>
+
+            {howItWorksSteps.length > 0 && (
               <div className="space-y-2.5 pt-1">
                 <p className="text-[11px] font-mono font-bold uppercase tracking-wider text-[#475569]">
-                  How It Works Step-by-Step
+                  How It Works — Step-by-Step Mechanism
                 </p>
-                {steps.map((step, idx) => (
+                {howItWorksSteps.map((step, idx) => (
                   <div
                     key={idx}
                     className="flex items-start gap-3 p-3 rounded-xl bg-[#F8FAFC] border border-[#E2E8F0] text-xs"
@@ -329,10 +444,34 @@ export default function SignalDashboard({
             </div>
             <div className="mt-3.5 grid grid-cols-2 gap-3">
               {[
-                { label: 'Entry Price', value: signal.entry_price, color: '#0F172A', badge: '#F59E0B', yPct: signal.visual_proof_annotations?.entry_y_percent },
-                { label: 'Stop Loss', value: signal.stop_loss, color: '#EF4444', badge: '#EF4444', yPct: signal.visual_proof_annotations?.stop_loss_y_percent },
-                { label: 'Take Profit 1', value: signal.take_profit_1, color: '#1D4ED8', badge: '#2563EB', yPct: signal.visual_proof_annotations?.tp1_y_percent },
-                { label: 'Take Profit 2', value: signal.take_profit_2, color: '#1D4ED8', badge: '#1D4ED8', yPct: signal.visual_proof_annotations?.tp2_y_percent },
+                {
+                  label: 'Entry Price',
+                  value: signal.entry_price,
+                  color: '#0F172A',
+                  badge: '#F59E0B',
+                  yPct: entryY,
+                },
+                {
+                  label: 'Stop Loss',
+                  value: signal.stop_loss,
+                  color: '#EF4444',
+                  badge: '#EF4444',
+                  yPct: stopLossY,
+                },
+                {
+                  label: 'Take Profit 1',
+                  value: signal.take_profit_1,
+                  color: '#1D4ED8',
+                  badge: '#2563EB',
+                  yPct: tp1Y,
+                },
+                {
+                  label: 'Take Profit 2',
+                  value: signal.take_profit_2,
+                  color: '#1D4ED8',
+                  badge: '#1D4ED8',
+                  yPct: tp2Y,
+                },
               ].map((level) => (
                 <div
                   key={level.label}
@@ -369,25 +508,41 @@ export default function SignalDashboard({
           <div className="saas-card rounded-2xl p-5 space-y-3">
             <div className="flex items-center gap-2 text-xs font-mono font-bold uppercase tracking-wider text-[#0F172A] pb-2 border-b border-[#E2E8F0]">
               <Compass className="w-4 h-4 text-[#1D4ED8]" />
-              <span>Institutional Trading Tools Analysis</span>
+              <span>
+                {analysisMode === 'MACRO_PRICE_ACTION'
+                  ? 'Macro Price Action & Trend Structure'
+                  : 'Institutional SMC Tools Analysis'}
+              </span>
             </div>
 
             <div className="space-y-2.5">
               {[
                 {
-                  title: 'Market Structure (BOS / CHoCH)',
+                  title:
+                    analysisMode === 'MACRO_PRICE_ACTION'
+                      ? 'Swing Highs / Lows & Trend Structure'
+                      : 'Market Structure (BOS / CHoCH)',
                   content: tools?.market_structure,
                 },
                 {
-                  title: 'Liquidity Zones (BSL / SSL)',
+                  title:
+                    analysisMode === 'MACRO_PRICE_ACTION'
+                      ? 'Horizontal Support & Resistance Levels'
+                      : 'Liquidity Zones (BSL / SSL)',
                   content: tools?.liquidity_zones,
                 },
                 {
-                  title: 'Imbalances & Order Blocks (FVG / OB)',
+                  title:
+                    analysisMode === 'MACRO_PRICE_ACTION'
+                      ? 'Supply / Demand Shelves & Flip Zones'
+                      : 'Imbalances & Order Blocks (FVG / OB)',
                   content: tools?.imbalances_and_obs,
                 },
                 {
-                  title: 'Fibonacci & Session Context',
+                  title:
+                    analysisMode === 'MACRO_PRICE_ACTION'
+                      ? 'Multi-Session Trajectory & Momentum'
+                      : 'Fibonacci & Session Context',
                   content: tools?.fibonacci_or_session_context,
                 },
               ].map(
@@ -410,7 +565,7 @@ export default function SignalDashboard({
           </div>
 
           {/* Annotated Visual Proof Zones Summary */}
-          {signal.visual_proof_annotations?.zones?.length > 0 && (
+          {zones.length > 0 && (
             <div className="saas-card rounded-2xl p-5">
               <div className="flex items-center gap-2 text-xs font-mono font-bold uppercase tracking-wider text-[#0F172A] mb-3">
                 <Activity className="w-4 h-4 text-[#1D4ED8]" />
@@ -418,7 +573,7 @@ export default function SignalDashboard({
               </div>
 
               <div className="space-y-2">
-                {signal.visual_proof_annotations.zones.map((z, idx) => (
+                {zones.map((z, idx) => (
                   <div
                     key={idx}
                     className="flex items-center justify-between gap-2 p-2.5 rounded-xl bg-[#F8FAFC] border border-[#E2E8F0] text-xs"
@@ -432,7 +587,8 @@ export default function SignalDashboard({
                       </span>
                     </div>
                     <span className="font-mono text-[10px] text-[#475569] flex-shrink-0">
-                      X:{z.x_start_percent}-{z.x_end_percent}% · Y:{z.y_start_percent}-{z.y_end_percent}%
+                      X:{z.x_start ?? z.x_start_percent}-{z.x_end ?? z.x_end_percent}% · Y:
+                      {z.y_start ?? z.y_start_percent}-{z.y_end ?? z.y_end_percent}%
                     </span>
                   </div>
                 ))}

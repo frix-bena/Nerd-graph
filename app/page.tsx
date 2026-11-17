@@ -17,7 +17,9 @@ export default function HomePage() {
   const handleAnalyzeChart = async (image: string, options: ChartScanOptions) => {
     setIsAnalyzing(true);
     setErrorMsg('');
-    setActiveChartImage(image);
+    if (image && image.trim() !== '') {
+      setActiveChartImage(image);
+    }
     setActiveSignal(null);
     try {
       const response = await fetch('/api/analyze-chart', {
@@ -31,9 +33,14 @@ export default function HomePage() {
         return;
       }
       const analysis = data.analysis as TradeAnalysis;
+      const persistedUrl = image || analysis.chartImageUrl || data.chartImageUrl || '';
+      if (persistedUrl) {
+        setActiveChartImage(persistedUrl);
+      }
       setActiveSignal({
         ...analysis,
-        analysis_summary: analysis.summary,
+        analysis_summary: analysis.summary || analysis.what_is_happening,
+        chartImageUrl: persistedUrl,
       });
     } catch (error) {
       setErrorMsg(error instanceof Error ? error.message : 'Network error analyzing chart.');
@@ -83,7 +90,7 @@ export default function HomePage() {
 
               {/* Clean, Readable Body Paragraph */}
               <p className="mt-5 max-w-xl text-base leading-relaxed text-[#475569] sm:text-lg">
-                Upload or paste any candlestick chart to automatically map institutional Order Blocks, Fair Value Gaps, liquidity sweeps, and risk-calibrated execution levels with flat vector clarity.
+                Upload or paste any candlestick chart, line chart, or multi-day overlaid spot chart (like Kitco) to automatically map institutional Order Blocks, Fair Value Gaps, support/resistance shelves, and risk-calibrated execution levels with flat vector clarity.
               </p>
 
               {/* Primary CTA Button & Secondary Link Directly Beneath */}
@@ -478,7 +485,7 @@ export default function HomePage() {
               Chart analysis workspace
             </h2>
             <p className="mt-1.5 max-w-2xl text-sm leading-relaxed text-[#475569]">
-              Upload or paste a market chart to review its Smart Money Concepts structure, key confluences, and execution levels.
+              Upload or paste a candlestick, line, area, or multi-day overlaid chart to review its Smart Money Concepts or Macro Price Action structure, market mechanics, and execution levels.
             </p>
           </div>
 
@@ -510,7 +517,12 @@ export default function HomePage() {
           aria-label="Chart analysis workspace"
           className="grid items-start gap-6 lg:grid-cols-[minmax(340px,0.85fr)_minmax(0,1.35fr)]"
         >
-          <ChartUpload onAnalyze={handleAnalyzeChart} isLoading={isAnalyzing} />
+          <ChartUpload
+            onAnalyze={handleAnalyzeChart}
+            isLoading={isAnalyzing}
+            persistedImage={activeChartImage}
+            onImageChange={setActiveChartImage}
+          />
 
           <div className="min-w-0">
             {activeSignal ? (

@@ -19,38 +19,63 @@ export interface ChartScanOptions {
 interface ChartUploadProps {
   onAnalyze: (imageData: string, options: ChartScanOptions) => Promise<void>;
   isLoading: boolean;
+  persistedImage?: string;
+  onImageChange?: (imageData: string) => void;
 }
 
-const ASSETS = ['XAUUSD', 'EURUSD', 'GBPUSD', 'NAS100'];
-const TIMEFRAMES = ['5M', '15M', '1H', '4H'];
-const ACCEPTED_TYPES = ['image/png', 'image/jpeg', 'image/webp'];
+const ASSETS = ['XAUUSD', 'EURUSD', 'GBPUSD', 'NAS100', 'BTCUSDT', 'US30'];
+const TIMEFRAMES = ['5M', '15M', '1H', '4H', '1D'];
+const ACCEPTED_TYPES = ['image/png', 'image/jpeg', 'image/jpg', 'image/webp'];
 const MAX_FILE_SIZE = 10 * 1024 * 1024;
 
-export default function ChartUpload({ onAnalyze, isLoading }: ChartUploadProps) {
+export default function ChartUpload({
+  onAnalyze,
+  isLoading,
+  persistedImage,
+  onImageChange,
+}: ChartUploadProps) {
   const [isDragOver, setIsDragOver] = useState(false);
-  const [preview, setPreview] = useState<string | null>(null);
+  const [preview, setPreview] = useState<string | null>(persistedImage || null);
   const [selectedSample, setSelectedSample] = useState<SampleChart | null>(null);
   const [asset, setAsset] = useState('XAUUSD');
   const [timeframe, setTimeframe] = useState('15M');
   const [error, setError] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const loadFile = useCallback((file: File) => {
-    if (!ACCEPTED_TYPES.includes(file.type)) {
-      setError('Choose a PNG, JPG, or WEBP chart image.');
-      return;
+  // Sync external persistedImage if parent updates it (e.g. quick sample scan), without ever clearing an existing Base64 preview on scan completion
+  useEffect(() => {
+    if (persistedImage && persistedImage.trim() !== '') {
+      setPreview(persistedImage);
     }
-    if (file.size > MAX_FILE_SIZE) {
-      setError('Chart images must be smaller than 10 MB.');
-      return;
-    }
-    setError('');
-    setSelectedSample(null);
-    const reader = new FileReader();
-    reader.onload = () => setPreview(typeof reader.result === 'string' ? reader.result : null);
-    reader.onerror = () => setError('The selected image could not be read.');
-    reader.readAsDataURL(file);
-  }, []);
+  }, [persistedImage]);
+
+  const loadFile = useCallback(
+    (file: File) => {
+      const normalizedType = file.type === 'image/jpg' ? 'image/jpeg' : file.type;
+      if (!ACCEPTED_TYPES.includes(normalizedType)) {
+        setError('Choose a PNG, JPG, or WEBP chart image.');
+        return;
+      }
+      if (file.size > MAX_FILE_SIZE) {
+        setError('Chart images must be smaller than 10 MB.');
+        return;
+      }
+      setError('');
+      setSelectedSample(null);
+      const reader = new FileReader();
+      reader.onload = () => {
+        if (typeof reader.result === 'string' && reader.result.startsWith('data:')) {
+          setPreview(reader.result);
+          onImageChange?.(reader.result);
+        } else {
+          setError('The selected image could not be encoded as a Data URL.');
+        }
+      };
+      reader.onerror = () => setError('The selected image could not be read.');
+      reader.readAsDataURL(file);
+    },
+    [onImageChange]
+  );
 
   useEffect(() => {
     const handlePaste = (event: ClipboardEvent) => {
@@ -68,12 +93,14 @@ export default function ChartUpload({ onAnalyze, isLoading }: ChartUploadProps) 
     setTimeframe(sample.timeframe.toUpperCase());
     setSelectedSample(sample);
     setPreview(sample.thumbnailUrl);
+    onImageChange?.(sample.thumbnailUrl);
     setError('');
   };
 
   const scan = () => {
-    if (preview) {
-      void onAnalyze(preview, {
+    const activeDataUrl = preview || persistedImage;
+    if (activeDataUrl) {
+      void onAnalyze(activeDataUrl, {
         asset,
         timeframe,
         ...(selectedSample ? { sampleId: selectedSample.id } : {}),
@@ -81,16 +108,27 @@ export default function ChartUpload({ onAnalyze, isLoading }: ChartUploadProps) 
     }
   };
 
+  const activePreviewUrl = preview || persistedImage || null;
+
   return (
     <div className="saas-card rounded-2xl p-4 sm:p-5 space-y-5">
       <div>
-        <p className="text-sm font-bold text-[#0F172A]">Chart input</p>
-        <p className="mt-1 text-xs text-[#475569]">Upload, drop, or paste a chart screenshot.</p>
+        <div className="flex items-center justify-between gap-2">
+          <p className="text-sm font-bold text-[#0F172A]">Chart input</p>
+          <span className="rounded-full border border-[#BFDBFE] bg-[#EFF6FF] px-2.5 py-0.5 text-[10px] font-bold text-[#1D4ED8]">
+            Candlestick &amp; Line / Overlaid Supported
+          </span>
+        </div>
+        <p className="mt-1 text-xs text-[#475569]">
+          Upload, drop, or paste any candlestick chart, line/area chart, or multi-day overlaid spot chart (e.g., Kitco).
+        </p>
       </div>
 
       <div className="flex flex-wrap gap-2">
         <div className="flex flex-wrap items-center gap-1.5">
-          <span className="text-[10px] font-semibold uppercase tracking-wider text-[#475569]">Asset</span>
+          <span className="text-[10px] font-semibold uppercase tracking-wider text-[#475569]">
+            Asset
+          </span>
           {ASSETS.map((value) => (
             <button
               key={value}
@@ -107,7 +145,9 @@ export default function ChartUpload({ onAnalyze, isLoading }: ChartUploadProps) 
           ))}
         </div>
         <div className="flex flex-wrap items-center gap-1.5 sm:ml-auto">
-          <span className="text-[10px] font-semibold uppercase tracking-wider text-[#475569]">Timeframe</span>
+          <span className="text-[10px] font-semibold uppercase tracking-wider text-[#475569]">
+            Timeframe
+          </span>
           {TIMEFRAMES.map((value) => (
             <button
               key={value}
@@ -125,28 +165,40 @@ export default function ChartUpload({ onAnalyze, isLoading }: ChartUploadProps) 
         </div>
       </div>
 
-      {preview ? (
+      {activePreviewUrl ? (
         <div className="overflow-hidden rounded-xl border border-[#CBD5E1] bg-[#F8FAFC]">
           <div className="flex items-center justify-between border-b border-[#E2E8F0] bg-white px-3 py-2">
             <span className="flex items-center gap-2 text-xs font-medium text-[#0F172A]">
               <ImageIcon className="h-3.5 w-3.5 text-[#1D4ED8]" /> Preview · {asset} · {timeframe}
             </span>
-            <button
-              type="button"
-              onClick={() => {
-                setPreview(null);
-                setSelectedSample(null);
-              }}
-              className="text-xs font-semibold text-[#1D4ED8] hover:text-[#1E40AF]"
-            >
-              Remove
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                className="text-xs font-semibold text-[#475569] hover:text-[#0F172A]"
+              >
+                Replace
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setPreview(null);
+                  setSelectedSample(null);
+                  onImageChange?.('');
+                }}
+                className="text-xs font-semibold text-[#1D4ED8] hover:text-[#1E40AF]"
+              >
+                Remove
+              </button>
+            </div>
           </div>
-          <img
-            src={preview}
-            alt={`${asset} ${timeframe} chart preview`}
-            className="max-h-64 w-full object-contain bg-[#F8FAFC]"
-          />
+          <div className="relative w-full bg-[#F8FAFC] p-2">
+            <img
+              src={activePreviewUrl}
+              alt={`${asset} ${timeframe} chart preview`}
+              className="max-h-64 w-full rounded-lg object-contain bg-[#F8FAFC] block"
+            />
+          </div>
         </div>
       ) : (
         <button
@@ -173,7 +225,9 @@ export default function ChartUpload({ onAnalyze, isLoading }: ChartUploadProps) 
             <UploadCloud className="h-6 w-6 text-[#1D4ED8]" />
           </div>
           <span className="text-sm font-bold text-[#0F172A]">Drop your chart here or browse</span>
-          <span className="mt-1 text-xs text-[#475569]">PNG, JPG, WEBP · up to 10 MB</span>
+          <span className="mt-1 text-xs text-[#475569]">
+            Candlestick, Line, Area, or Kitco Overlaid Charts · PNG, JPG, WEBP up to 10 MB
+          </span>
           <span className="mt-3 inline-flex items-center gap-1.5 rounded-full border border-[#BFDBFE] bg-[#EFF6FF] px-3 py-1 text-[11px] font-medium text-[#0F172A]">
             <ClipboardPaste className="h-3 w-3 text-[#1D4ED8]" /> Paste image with Ctrl+V
           </span>
@@ -204,7 +258,9 @@ export default function ChartUpload({ onAnalyze, isLoading }: ChartUploadProps) 
         <div className="mb-2.5 flex items-center justify-between gap-2">
           <div>
             <p className="text-xs font-bold text-[#0F172A]">Try a sample chart</p>
-            <p className="text-[11px] text-[#475569]">Load a candlestick setup without an upload.</p>
+            <p className="text-[11px] text-[#475569]">
+              Test both Candlestick (SMC) and Line/Overlaid (Macro Trend) setups.
+            </p>
           </div>
           {selectedSample && (
             <span className="rounded-full border border-[#93C5FD] bg-[#EFF6FF] px-2 py-0.5 text-[10px] font-bold text-[#1D4ED8]">
@@ -225,6 +281,7 @@ export default function ChartUpload({ onAnalyze, isLoading }: ChartUploadProps) 
               }`}
             >
               {sample.asset} · {sample.timeframe.toUpperCase()}
+              {sample.chartType === 'LINE_OR_OVERLAID' ? ' (Line)' : ''}
             </button>
           ))}
         </div>
@@ -233,7 +290,7 @@ export default function ChartUpload({ onAnalyze, isLoading }: ChartUploadProps) 
       <button
         type="button"
         onClick={scan}
-        disabled={!preview || isLoading}
+        disabled={!activePreviewUrl || isLoading}
         className="btn-royal-primary flex w-full items-center justify-center gap-2 rounded-xl px-4 py-3 text-sm font-bold shadow-saas-btn disabled:cursor-not-allowed disabled:opacity-50"
       >
         {isLoading ? (
@@ -241,7 +298,7 @@ export default function ChartUpload({ onAnalyze, isLoading }: ChartUploadProps) 
         ) : (
           <ScanLine className="h-4 w-4 text-white" />
         )}
-        {isLoading ? 'Scanning chart…' : 'Run SMC Vision Scan'}
+        {isLoading ? 'Scanning chart…' : 'Run Vision AI Scan'}
       </button>
     </div>
   );
