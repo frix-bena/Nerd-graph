@@ -9,42 +9,43 @@ module.exports = {
   theme: {
     extend: {
       colors: {
-        background: '#0B0B0B',
-        foreground: '#F5EBE6',
-        chocolate: {
-          900: '#150C07',
-          800: '#1E120C',
-          700: '#2A1810',
-          600: '#3D2314',
-          500: '#5A341E',
+        background: '#F8FAFC',
+        foreground: '#0F172A',
+        royal: {
+          DEFAULT: '#1D4ED8',
+          50: '#EFF6FF',
+          100: '#DBEAFE',
+          200: '#BFDBFE',
+          300: '#93C5FD',
+          500: '#3B82F6',
+          600: '#2563EB',
+          700: '#1D4ED8',
+          800: '#1E40AF',
         },
-        gold: {
-          DEFAULT: '#D4A373',
-          50: '#FAF5EE',
-          100: '#F3E7D7',
-          200: '#E8CEA9',
-          300: '#DCB57E',
-          400: '#D4A373',
-          500: '#C28952',
-          600: '#A46B34',
-          700: '#7E4E24',
+        navy: {
+          DEFAULT: '#0F172A',
+          800: '#1E293B',
+          700: '#334155',
         },
-        tan: {
-          DEFAULT: '#A8968D',
-          muted: '#8C7A71',
-          light: '#C4B7B0',
+        slate: {
+          body: '#475569',
+          muted: '#64748B',
+          border: '#E2E8F0',
         },
         bullish: {
           DEFAULT: '#10B981',
           light: '#34D399',
           dark: '#059669',
-          glow: 'rgba(16, 185, 129, 0.15)',
+          glow: 'rgba(16, 185, 129, 0.12)',
         },
         bearish: {
           DEFAULT: '#EF4444',
           light: '#F87171',
           dark: '#DC2626',
-          glow: 'rgba(239, 68, 68, 0.15)',
+          glow: 'rgba(239, 68, 68, 0.12)',
+        },
+        amber: {
+          DEFAULT: '#F59E0B',
         },
       },
       fontFamily: {
@@ -52,33 +53,12 @@ module.exports = {
         mono: ['JetBrains Mono', 'Fira Code', 'monospace'],
       },
       boxShadow: {
-        'gold-glow': '0 0 25px -5px rgba(212, 163, 115, 0.25)',
-        'bullish-glow': '0 0 25px -5px rgba(16, 185, 129, 0.3)',
-        'bearish-glow': '0 0 25px -5px rgba(239, 68, 68, 0.3)',
-        'card-lux': '0 8px 32px 0 rgba(0, 0, 0, 0.6)',
-      },
-      borderColor: {
-        'gold-subtle': 'rgba(212, 163, 115, 0.25)',
-        'gold-strong': 'rgba(212, 163, 115, 0.4)',
+        'saas-sm': '0 1px 2px 0 rgba(15, 23, 42, 0.04)',
+        'saas-card': '0 4px 20px -2px rgba(15, 23, 42, 0.06), 0 1px 3px 0 rgba(15, 23, 42, 0.04)',
+        'saas-btn': '0 4px 12px rgba(29, 78, 216, 0.22)',
       },
       backgroundImage: {
-        'chocolate-gradient': 'linear-gradient(135deg, #2A1810 0%, #1E120C 100%)',
-        'btn-bronze': 'linear-gradient(135deg, #3D2314 0%, #5A341E 100%)',
-        'btn-bronze-hover': 'linear-gradient(135deg, #4A2B19 0%, #6E4025 100%)',
-        'gold-shimmer': 'linear-gradient(90deg, transparent, rgba(212, 163, 115, 0.15), transparent)',
-      },
-      keyframes: {
-        shimmer: {
-          '100%': { transform: 'translateX(100%)' },
-        },
-        pulseGlow: {
-          '0%, 100%': { opacity: 1 },
-          '50%': { opacity: 0.5 },
-        },
-      },
-      animation: {
-        shimmer: 'shimmer 2s infinite',
-        pulseGlow: 'pulseGlow 2s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+        'ice-radial': 'radial-gradient(circle at 50% 50%, rgba(219, 234, 254, 0.85) 0%, rgba(239, 246, 255, 0.5) 45%, rgba(248, 250, 252, 0) 72%)',
       },
     },
   },

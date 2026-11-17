@@ -10,7 +10,7 @@ export interface SampleChart {
   mockAnalysis: SMCSignalOutput;
 }
 
-// Generate realistic SVG candlestick chart data URI for immediate testing
+// Generate flat 2D vector SVG candlestick chart data URI matching the modern SaaS UI palette
 function generateCandleChartSvg(symbol: string, tf: string, isBullish: boolean): string {
   const candles = isBullish
     ? [
@@ -37,61 +37,49 @@ function generateCandleChartSvg(symbol: string, tf: string, isBullish: boolean):
         { o: 67300, h: 67500, l: 66800, c: 66900, g: false },
       ];
 
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 450" width="800" height="450" style="background:#0E0805; font-family:sans-serif;">
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 450" width="800" height="450" style="background:#F8FAFC; font-family:Inter, sans-serif;">
     <defs>
-      <linearGradient id="gridGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-        <stop offset="0%" stop-color="#1E120C" stop-opacity="0.8"/>
-        <stop offset="100%" stop-color="#0B0B0B" stop-opacity="0.95"/>
-      </linearGradient>
       <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
-        <path d="M 40 0 L 0 0 0 40" fill="none" stroke="#2A1810" stroke-width="0.75" stroke-opacity="0.5"/>
+        <path d="M 40 0 L 0 0 0 40" fill="none" stroke="#E2E8F0" stroke-width="1"/>
       </pattern>
     </defs>
-    <rect width="800" height="450" fill="url(#gridGrad)" />
+    <rect width="800" height="450" fill="#F8FAFC" />
     <rect width="800" height="450" fill="url(#grid)" />
     
-    <!-- Watermark / Header -->
-    <text x="30" y="45" fill="#D4A373" font-size="20" font-weight="bold" letter-spacing="1.5">APEX VISION AI &bull; ${symbol}</text>
-    <text x="30" y="70" fill="#A8968D" font-size="13">${tf} &bull; Smart Money Concepts (SMC) Engine</text>
-    <text x="650" y="45" fill="#10B981" font-size="13" font-family="monospace">BID: 2168.40</text>
-    <text x="650" y="65" fill="#EF4444" font-size="13" font-family="monospace">ASK: 2168.65</text>
+    <!-- Header -->
+    <text x="30" y="42" fill="#0F172A" font-size="18" font-weight="800" letter-spacing="0.5">APEX VISION AI &bull; ${symbol}</text>
+    <text x="30" y="64" fill="#475569" font-size="12" font-weight="600">${tf} &bull; Smart Money Concepts (SMC) Vector Engine</text>
+    
+    <rect x="635" y="24" width="135" height="44" rx="8" fill="#EFF6FF" stroke="#0F172A" stroke-width="1.5"/>
+    <text x="648" y="43" fill="#1D4ED8" font-size="12" font-weight="bold" font-family="monospace">BID: 2652.40</text>
+    <text x="648" y="60" fill="#EF4444" font-size="12" font-weight="bold" font-family="monospace">ASK: 2652.65</text>
     
     <!-- SMC Markups -->
-    <rect x="250" y="160" width="180" height="45" fill="#D4A373" fill-opacity="0.12" stroke="#D4A373" stroke-dasharray="3,3" stroke-width="1.2"/>
-    <text x="260" y="185" fill="#D4A373" font-size="11" font-weight="bold">Bullish FVG (Fair Value Gap)</text>
+    <rect x="250" y="160" width="210" height="46" rx="6" fill="#DBEAFE" fill-opacity="0.85" stroke="#1D4ED8" stroke-dasharray="4,4" stroke-width="2"/>
+    <text x="264" y="187" fill="#1D4ED8" font-size="11" font-weight="bold" font-family="monospace">Bullish FVG (Fair Value Gap)</text>
     
-    <rect x="180" y="270" width="140" height="35" fill="#10B981" fill-opacity="0.15" stroke="#10B981" stroke-width="1"/>
-    <text x="190" y="292" fill="#10B981" font-size="11" font-weight="bold">Demand Order Block (OB)</text>
+    <rect x="170" y="270" width="165" height="38" rx="6" fill="#FEF3C7" stroke="#F59E0B" stroke-width="2"/>
+    <text x="184" y="293" fill="#0F172A" font-size="11" font-weight="bold" font-family="monospace">Demand Order Block (OB)</text>
 
     <!-- Break of Structure Line -->
-    <line x1="280" y1="120" x2="620" y2="120" stroke="#D4A373" stroke-width="1.5" stroke-dasharray="4,4"/>
-    <text x="430" y="112" fill="#D4A373" font-size="11" font-weight="bold">BOS (Break of Structure) &uarr;</text>
+    <line x1="280" y1="120" x2="620" y2="120" stroke="#0F172A" stroke-width="2" stroke-dasharray="4,4"/>
+    <text x="415" y="112" fill="#0F172A" font-size="11" font-weight="bold" font-family="monospace">BOS (Break of Structure) &uarr;</text>
 
     <!-- Candlesticks rendering -->
     ${candles
       .map((c, i) => {
         const x = 70 + i * 58;
-        const color = c.g ? '#10B981' : '#EF4444';
+        const fill = c.g ? '#1D4ED8' : '#EF4444';
         const bodyTop = Math.min(400 - (c.o % 300) * 0.9, 400 - (c.c % 300) * 0.9);
-        const bodyH = Math.max(8, Math.abs((c.o % 300) - (c.c % 300)) * 0.9);
+        const bodyH = Math.max(10, Math.abs((c.o % 300) - (c.c % 300)) * 0.9);
         const wickTop = 400 - (c.h % 300) * 0.9;
         const wickBottom = 400 - (c.l % 300) * 0.9;
         return `
-          <line x1="${x + 12}" y1="${wickTop}" x2="${x + 12}" y2="${wickBottom}" stroke="${color}" stroke-width="1.5" />
-          <rect x="${x}" y="${bodyTop}" width="24" height="${bodyH}" fill="${color}" rx="2" stroke="${color}" stroke-width="1"/>
+          <line x1="${x + 12}" y1="${wickTop}" x2="${x + 12}" y2="${wickBottom}" stroke="#0F172A" stroke-width="2" />
+          <rect x="${x}" y="${bodyTop}" width="24" height="${bodyH}" fill="${fill}" rx="3" stroke="#0F172A" stroke-width="2"/>
         `;
       })
       .join('')}
-
-    <!-- Target Labels -->
-    <line x1="40" y1="80" x2="760" y2="80" stroke="#10B981" stroke-width="1" stroke-dasharray="2,2"/>
-    <text x="700" y="75" fill="#10B981" font-size="11">TP2: 2,185.00</text>
-    <line x1="40" y1="140" x2="760" y2="140" stroke="#34D399" stroke-width="1" stroke-dasharray="2,2"/>
-    <text x="700" y="135" fill="#34D399" font-size="11">TP1: 2,172.50</text>
-    <line x1="40" y1="230" x2="760" y2="230" stroke="#D4A373" stroke-width="1.5"/>
-    <text x="700" y="225" fill="#D4A373" font-size="11">Entry: 2,152.00</text>
-    <line x1="40" y1="310" x2="760" y2="310" stroke="#EF4444" stroke-width="1.5"/>
-    <text x="700" y="305" fill="#EF4444" font-size="11">SL: 2,141.50</text>
   </svg>`;
 
   return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;

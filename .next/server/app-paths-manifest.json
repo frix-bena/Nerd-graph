@@ -3,7 +3,7 @@
   "/api/mt5/webhook/route": "app/api/mt5/webhook/route.js",
   "/page": "app/page.js",
   "/api/mt5/ea/route": "app/api/mt5/ea/route.js",
-  "/api/user/route": "app/api/user/route.js",
   "/api/signals/route": "app/api/signals/route.js",
+  "/api/user/route": "app/api/user/route.js",
   "/api/analyze-chart/route": "app/api/analyze-chart/route.js"
 }

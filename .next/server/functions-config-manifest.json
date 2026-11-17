@@ -1,1 +1,1 @@
-{"version":1,"functions":{"/api/mt5/ea":{},"/api/user":{},"/api/signals":{},"/api/analyze-chart":{}}}
+{"version":1,"functions":{"/api/signals":{},"/api/user":{},"/api/mt5/ea":{},"/api/analyze-chart":{}}}

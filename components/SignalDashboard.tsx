@@ -7,17 +7,14 @@ import {
   TrendingUp,
   TrendingDown,
   ShieldAlert,
-  Target,
   Zap,
   CheckCircle2,
   Copy,
-  Download,
   Terminal,
   Crosshair,
   BarChart2,
   Layers,
   Sparkles,
-  Info,
   RotateCcw,
 } from 'lucide-react';
 
@@ -68,16 +65,16 @@ export default function SignalDashboard({
   return (
     <div className="w-full space-y-6">
       {/* Top Banner with Asset Badge, Bias, and Quick Actions */}
-      <div className="rounded-2xl bg-gradient-to-r from-[#2A1810] via-[#1E120C] to-[#2A1810] border border-[#D4A373]/30 p-5 shadow-card-lux">
+      <div className="saas-card rounded-2xl p-5">
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3.5">
             <div
-              className={`w-12 h-12 rounded-xl flex items-center justify-center border font-black text-xl shadow-lg ${
+              className={`w-12 h-12 rounded-xl flex items-center justify-center border-2 font-black text-xl ${
                 isBuy
-                  ? 'bg-[#10B981]/15 border-[#10B981]/50 text-[#10B981]'
+                  ? 'bg-[#EFF6FF] border-[#1D4ED8] text-[#1D4ED8]'
                   : isSell
-                  ? 'bg-[#EF4444]/15 border-[#EF4444]/50 text-[#EF4444]'
-                  : 'bg-[#D4A373]/15 border-[#D4A373]/50 text-[#D4A373]'
+                  ? 'bg-[#FEF2F2] border-[#EF4444] text-[#EF4444]'
+                  : 'bg-[#FEF3C7] border-[#F59E0B] text-[#0F172A]'
               }`}
             >
               {isBuy ? (
@@ -90,37 +87,40 @@ export default function SignalDashboard({
             </div>
 
             <div>
-              <div className="flex items-center gap-2">
-                <h2 className="text-xl sm:text-2xl font-black text-[#F5EBE6] tracking-tight">
+              <div className="flex flex-wrap items-center gap-2">
+                <h2 className="text-xl sm:text-2xl font-extrabold text-[#0F172A] tracking-tight">
                   {signal.asset}
                 </h2>
-                <span className="text-xs font-mono px-2 py-0.5 rounded bg-[#3D2314] text-[#D4A373] border border-[#D4A373]/30 font-bold">
+                <span className="text-xs font-mono px-2.5 py-0.5 rounded-md bg-[#F8FAFC] text-[#0F172A] border border-[#CBD5E1] font-bold">
                   {signal.timeframe}
                 </span>
                 <span
-                  className={`text-xs font-bold tracking-wider px-2.5 py-0.5 rounded-full border ${
+                  className={`text-xs font-bold tracking-wider px-3 py-0.5 rounded-full border ${
                     isBuy
-                      ? 'bg-[#10B981]/20 border-[#10B981] text-[#10B981]'
+                      ? 'bg-[#EFF6FF] border-[#93C5FD] text-[#1D4ED8]'
                       : isSell
-                      ? 'bg-[#EF4444]/20 border-[#EF4444] text-[#EF4444]'
-                      : 'bg-[#D4A373]/15 border-[#D4A373] text-[#D4A373]'
+                      ? 'bg-[#FEF2F2] border-[#FECACA] text-[#EF4444]'
+                      : 'bg-[#FEF3C7] border-[#FDE68A] text-[#0F172A]'
                   }`}
                 >
                   {signal.trade_recommendation} SETUP
                 </span>
               </div>
-              <p className="text-xs text-[#A8968D] mt-0.5">
+              <p className="text-xs text-[#475569] mt-1">
                 AI Vision Confidence:{' '}
-                <span className="text-[#F5EBE6] font-bold font-mono">
+                <span className="text-[#0F172A] font-bold font-mono">
                   {signal.confidence_score}%
                 </span>{' '}
                 • Market Bias:{' '}
-                <span className="text-[#D4A373] font-bold">
+                <span className="text-[#1D4ED8] font-bold">
                   {signal.market_bias}
                 </span>
               </p>
-              <div className="mt-2 h-1.5 w-48 max-w-full overflow-hidden rounded-full bg-[#150C07]">
-                <div className="h-full rounded-full bg-gradient-to-r from-[#5A341E] to-[#10B981]" style={{ width: `${Math.min(100, Math.max(0, signal.confidence_score))}%` }} />
+              <div className="mt-2 h-1.5 w-48 max-w-full overflow-hidden rounded-full bg-[#E2E8F0]">
+                <div
+                  className="h-full rounded-full bg-[#1D4ED8]"
+                  style={{ width: `${Math.min(100, Math.max(0, signal.confidence_score))}%` }}
+                />
               </div>
             </div>
           </div>
@@ -129,38 +129,40 @@ export default function SignalDashboard({
           <div className="flex items-center gap-2.5 w-full sm:w-auto">
             <button
               onClick={onReset}
-              className="flex-1 sm:flex-initial px-3 py-2 rounded-xl bg-[#2A1810] hover:bg-[#3D2314] text-xs font-semibold text-[#A8968D] hover:text-[#F5EBE6] border border-[#D4A373]/20 flex items-center justify-center gap-1.5 transition-all"
+              className="flex-1 sm:flex-initial px-3.5 py-2 rounded-lg bg-[#F8FAFC] hover:bg-[#EFF6FF] text-xs font-semibold text-[#0F172A] hover:text-[#1D4ED8] border border-[#CBD5E1] flex items-center justify-center gap-1.5 transition-all"
             >
               <RotateCcw className="w-3.5 h-3.5" />
               <span>Scan Another</span>
             </button>
 
-            {showExecutionControls && <button
-              onClick={onExecuteNow}
-              disabled={isExecuting}
-              className={`flex-1 sm:flex-initial px-4 py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-2 shadow-lg transition-all ${
-                executionSuccess
-                  ? 'bg-[#10B981] text-black font-black'
-                  : 'btn-bronze-gold'
-              }`}
-            >
-              {isExecuting ? (
-                <>
-                  <Zap className="w-3.5 h-3.5 animate-spin" />
-                  <span>Transmitting...</span>
-                </>
-              ) : executionSuccess ? (
-                <>
-                  <CheckCircle2 className="w-3.5 h-3.5" />
-                  <span>Executed on MT5!</span>
-                </>
-              ) : (
-                <>
-                  <Zap className="w-3.5 h-3.5 text-[#D4A373]" />
-                  <span>Execute on MT5</span>
-                </>
-              )}
-            </button>}
+            {showExecutionControls && (
+              <button
+                onClick={onExecuteNow}
+                disabled={isExecuting}
+                className={`flex-1 sm:flex-initial px-4 py-2 rounded-lg text-xs font-bold flex items-center justify-center gap-2 transition-all ${
+                  executionSuccess
+                    ? 'bg-[#10B981] text-white font-black'
+                    : 'btn-royal-primary'
+                }`}
+              >
+                {isExecuting ? (
+                  <>
+                    <Zap className="w-3.5 h-3.5 animate-spin" />
+                    <span>Transmitting...</span>
+                  </>
+                ) : executionSuccess ? (
+                  <>
+                    <CheckCircle2 className="w-3.5 h-3.5" />
+                    <span>Executed on MT5!</span>
+                  </>
+                ) : (
+                  <>
+                    <Zap className="w-3.5 h-3.5 text-white" />
+                    <span>Execute on MT5</span>
+                  </>
+                )}
+              </button>
+            )}
           </div>
         </div>
       </div>
@@ -172,23 +174,23 @@ export default function SignalDashboard({
           <InteractiveChartOverlay imageUrl={chartImage} signal={signal} />
 
           {/* Analysis Summary Box */}
-          <div className="rounded-2xl bg-[#1E120C] border border-[#D4A373]/20 p-5 shadow-card-lux">
-            <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-[#D4A373] mb-2 font-mono">
-              <Sparkles className="w-4 h-4 text-[#D4A373]" />
+          <div className="saas-card rounded-2xl p-5">
+            <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-[#1D4ED8] mb-2 font-mono">
+              <Sparkles className="w-4 h-4 text-[#1D4ED8]" />
               <span>Vision AI Technical Summary</span>
             </div>
-            <p className="text-sm text-[#F5EBE6] leading-relaxed">
+            <p className="text-sm text-[#475569] leading-relaxed">
               {signal.analysis_summary}
             </p>
           </div>
 
           {/* Invalidation Condition Box */}
-          <div className="rounded-2xl bg-[#2A1810]/70 border border-[#EF4444]/30 p-4 shadow-card-lux">
+          <div className="rounded-2xl bg-[#FEF2F2] border border-[#FECACA] p-4">
             <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-[#EF4444] mb-1.5 font-mono">
               <ShieldAlert className="w-4 h-4 text-[#EF4444]" />
               <span>Invalidation Condition</span>
             </div>
-            <p className="text-xs text-[#F5EBE6]/90 leading-relaxed font-mono">
+            <p className="text-xs text-[#0F172A] leading-relaxed font-mono">
               {signal.invalidation_condition}
             </p>
           </div>
@@ -196,35 +198,51 @@ export default function SignalDashboard({
 
         {/* Right Column: Key Metric Cards & Trade Setup Breakdown (5 cols on lg) */}
         <div className="lg:col-span-5 space-y-4">
-          <div className="rounded-2xl bg-gradient-to-br from-[#2A1810] to-[#1E120C] border border-[#D4A373]/30 p-4 shadow-card-lux">
-            <div className="flex items-center justify-between pb-2 border-b border-[#D4A373]/15">
-              <span className="text-xs font-mono font-bold uppercase tracking-wider text-[#D4A373] flex items-center gap-1.5">
-                <Crosshair className="w-4 h-4 text-[#D4A373]" />
+          <div className="saas-card rounded-2xl p-5">
+            <div className="flex items-center justify-between pb-3 border-b border-[#E2E8F0]">
+              <span className="text-xs font-mono font-bold uppercase tracking-wider text-[#0F172A] flex items-center gap-1.5">
+                <Crosshair className="w-4 h-4 text-[#1D4ED8]" />
                 Trade execution levels
               </span>
-              <span className="rounded-lg border border-[#D4A373]/30 bg-[#3D2314] px-2.5 py-1 text-[11px] font-mono font-bold text-[#D4A373]">
+              <span className="rounded-full border border-[#93C5FD] bg-[#EFF6FF] px-2.5 py-0.5 text-[11px] font-mono font-bold text-[#1D4ED8]">
                 R:R {signal.risk_reward_ratio}
               </span>
             </div>
-            <div className="mt-3 grid grid-cols-2 gap-2.5">
+            <div className="mt-3.5 grid grid-cols-2 gap-3">
               {[
-                { label: 'Entry Price', value: signal.entry_price, color: '#D4A373' },
-                { label: 'Stop Loss', value: signal.stop_loss, color: '#EF4444' },
-                { label: 'Take Profit 1', value: signal.take_profit_1, color: '#34D399' },
-                { label: 'Take Profit 2', value: signal.take_profit_2, color: '#10B981' },
+                { label: 'Entry Price', value: signal.entry_price, color: '#0F172A', badge: '#F59E0B' },
+                { label: 'Stop Loss', value: signal.stop_loss, color: '#EF4444', badge: '#EF4444' },
+                { label: 'Take Profit 1', value: signal.take_profit_1, color: '#1D4ED8', badge: '#2563EB' },
+                { label: 'Take Profit 2', value: signal.take_profit_2, color: '#1D4ED8', badge: '#1D4ED8' },
               ].map((level) => (
-                <div key={level.label} className="rounded-xl border border-[#D4A373]/15 bg-[#150C07] p-3">
-                  <p className="text-[10px] font-bold uppercase tracking-wide text-[#A8968D]">{level.label}</p>
-                  <p className="mt-1 font-mono text-base font-black" style={{ color: level.color }}>{level.value.toLocaleString()}</p>
+                <div
+                  key={level.label}
+                  className="rounded-xl border border-[#E2E8F0] bg-[#F8FAFC] p-3"
+                >
+                  <div className="flex items-center gap-1.5">
+                    <span
+                      className="h-2 w-2 rounded-full"
+                      style={{ backgroundColor: level.badge }}
+                    />
+                    <p className="text-[10px] font-bold uppercase tracking-wide text-[#475569]">
+                      {level.label}
+                    </p>
+                  </div>
+                  <p
+                    className="mt-1 font-mono text-base font-extrabold"
+                    style={{ color: level.color }}
+                  >
+                    {level.value.toLocaleString()}
+                  </p>
                 </div>
               ))}
             </div>
           </div>
 
           {/* Key Confluences Breakdown Card */}
-          <div className="rounded-2xl bg-[#1E120C] border border-[#D4A373]/20 p-5 shadow-card-lux">
-            <div className="flex items-center gap-2 text-xs font-mono font-bold uppercase tracking-wider text-[#D4A373] mb-3">
-              <Layers className="w-4 h-4 text-[#D4A373]" />
+          <div className="saas-card rounded-2xl p-5">
+            <div className="flex items-center gap-2 text-xs font-mono font-bold uppercase tracking-wider text-[#0F172A] mb-3">
+              <Layers className="w-4 h-4 text-[#1D4ED8]" />
               <span>Smart Money Confluences (SMC)</span>
             </div>
 
@@ -232,33 +250,35 @@ export default function SignalDashboard({
               {signal.key_confluences?.map((conf, idx) => (
                 <div
                   key={idx}
-                  className="flex items-start gap-2.5 p-2.5 rounded-xl bg-[#2A1810]/60 border border-[#D4A373]/15 text-xs text-[#F5EBE6]"
+                  className="flex items-start gap-2.5 p-3 rounded-xl bg-[#F8FAFC] border border-[#E2E8F0] text-xs text-[#0F172A]"
                 >
-                  <CheckCircle2 className="w-4 h-4 text-[#10B981] flex-shrink-0 mt-0.5" />
-                  <span className="leading-relaxed">{conf}</span>
+                  <CheckCircle2 className="w-4 h-4 text-[#1D4ED8] flex-shrink-0 mt-0.5" />
+                  <span className="leading-relaxed text-[#475569] font-medium">{conf}</span>
                 </div>
               ))}
             </div>
           </div>
 
           {/* MT5 Payload & Webhook Actions Bar */}
-          {showExecutionControls && <div className="p-4 rounded-2xl bg-[#1E120C] border border-[#D4A373]/20 flex flex-col sm:flex-row items-center justify-between gap-3">
-            <button
-              onClick={copyPayload}
-              className="w-full sm:w-auto flex-1 flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl bg-[#2A1810] hover:bg-[#3D2314] text-xs font-medium text-[#F5EBE6] border border-[#D4A373]/25 transition-all"
-            >
-              <Copy className="w-3.5 h-3.5 text-[#D4A373]" />
-              <span>{copiedPayload ? '✓ Payload Copied!' : 'Copy Webhook Payload'}</span>
-            </button>
+          {showExecutionControls && (
+            <div className="saas-card p-4 rounded-2xl flex flex-col sm:flex-row items-center justify-between gap-3">
+              <button
+                onClick={copyPayload}
+                className="w-full sm:w-auto flex-1 flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg bg-[#F8FAFC] hover:bg-[#EFF6FF] text-xs font-semibold text-[#0F172A] border border-[#CBD5E1] transition-all"
+              >
+                <Copy className="w-3.5 h-3.5 text-[#1D4ED8]" />
+                <span>{copiedPayload ? '✓ Payload Copied!' : 'Copy Webhook Payload'}</span>
+              </button>
 
-            <button
-              onClick={onOpenMT5Modal}
-              className="w-full sm:w-auto flex-1 flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl btn-bronze-gold text-xs font-bold shadow transition-all"
-            >
-              <Terminal className="w-3.5 h-3.5 text-[#D4A373]" />
-              <span>MT5 EA & Webhook Setup</span>
-            </button>
-          </div>}
+              <button
+                onClick={onOpenMT5Modal}
+                className="w-full sm:w-auto flex-1 flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg btn-royal-primary text-xs font-bold transition-all"
+              >
+                <Terminal className="w-3.5 h-3.5 text-white" />
+                <span>MT5 EA &amp; Webhook Setup</span>
+              </button>
+            </div>
+          )}
         </div>
       </div>
     </div>
