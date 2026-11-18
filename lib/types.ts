@@ -83,6 +83,20 @@ export interface VisualProofAnnotations {
   prediction_path: PredictionPathPoint[];
 }
 
+export interface AccuracyVerification {
+  is_verified: boolean;
+  price_geometry_valid: boolean;
+  y_coordinate_monotonic: boolean;
+  rr_mathematically_verified: boolean;
+  confluence_gate_passed: boolean;
+  calculated_rr: number;
+  axis_top_price?: number;
+  axis_bottom_price?: number;
+  current_market_price?: number;
+  adjustments_applied: string[];
+  verification_checks: string[];
+}
+
 export interface InstitutionalSMCAnalysis {
   asset: string;
   timeframe: string;
@@ -103,6 +117,7 @@ export interface InstitutionalSMCAnalysis {
   trading_tools_analysis: TradingToolsAnalysis;
   trade_execution: TradeExecution;
   visual_proof_annotations: VisualProofAnnotations;
+  accuracy_verification?: AccuracyVerification;
 }
 
 export interface TradeAnalysis extends InstitutionalSMCAnalysis {

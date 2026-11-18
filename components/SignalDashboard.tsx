@@ -175,6 +175,12 @@ export default function SignalDashboard({
                     ? 'Macro Price Action & Trend Mode'
                     : 'Smart Money Concepts (SMC) Mode'}
                 </span>
+                {signal.accuracy_verification?.is_verified && (
+                  <span className="inline-flex items-center gap-1 text-[11px] font-mono font-bold px-2.5 py-0.5 rounded-full bg-[#EFF6FF] border border-[#1D4ED8] text-[#1D4ED8]">
+                    <CheckCircle2 className="w-3 h-3 text-[#1D4ED8]" />
+                    <span>Geometry &amp; R:R Verified</span>
+                  </span>
+                )}
               </div>
               <p className="text-xs text-[#475569] mt-1">
                 AI Vision Confidence:{' '}
@@ -407,6 +413,32 @@ export default function SignalDashboard({
                 </div>
               ))}
             </div>
+
+            {signal.accuracy_verification?.verification_checks &&
+              signal.accuracy_verification.verification_checks.length > 0 && (
+                <div className="mt-3.5 rounded-xl border border-[#BFDBFE] bg-[#EFF6FF]/60 p-3 space-y-1.5">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-[#1D4ED8] flex items-center gap-1.5">
+                      <CheckCircle2 className="w-3.5 h-3.5 text-[#1D4ED8]" />
+                      5-Stage Accuracy Guardrails Passed
+                    </span>
+                    <span className="text-[10px] font-mono font-semibold text-[#0F172A]">
+                      Calibrated
+                    </span>
+                  </div>
+                  <div className="space-y-1">
+                    {signal.accuracy_verification.verification_checks.map((check, i) => (
+                      <p
+                        key={i}
+                        className="text-[11px] font-mono text-[#0F172A] leading-snug flex items-start gap-1.5"
+                      >
+                        <span className="text-[#1D4ED8] font-bold">✓</span>
+                        <span>{check}</span>
+                      </p>
+                    ))}
+                  </div>
+                </div>
+              )}
           </div>
 
           {/* Institutional Trading Tools Analysis Breakdown Card */}

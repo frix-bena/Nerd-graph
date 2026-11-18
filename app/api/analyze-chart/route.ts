@@ -204,6 +204,7 @@ export async function POST(request: NextRequest) {
       trading_tools_analysis: result.trading_tools_analysis,
       trade_execution: result.trade_execution,
       visual_proof_annotations: result.visual_proof_annotations,
+      accuracy_verification: result.accuracy_verification,
       chartImageUrl: imageData || undefined,
     };
 
