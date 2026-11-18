@@ -129,7 +129,7 @@ export interface QuantEngineOutput {
   activeOrderBlocks: OrderBlockZone[];
   fibonacci: FibonacciZones;
   session: SessionContext;
-  snapshots: Record<SupportedTimeframe, QuantTimeframeSnapshot>;
+  snapshots: Record<string, QuantTimeframeSnapshot>;
   lineChartMacroSupportNote: string;
   promptContext: string;
 }
@@ -847,14 +847,22 @@ export function runQuantEngine(
   const primaryCandles = mtf.timeframes[primaryTf]?.candles || mtf.timeframes['15M'].candles;
   const decimals = getDecimalsForAsset(mtf.asset, mtf.currentSpotPrice);
 
-  const snapshots: Record<SupportedTimeframe, QuantTimeframeSnapshot> = {
+  const snapshots: Record<string, QuantTimeframeSnapshot> = {
     '4H': buildTimeframeSnapshot('4H', mtf.timeframes['4H'].candles, decimals),
     '1H': buildTimeframeSnapshot('1H', mtf.timeframes['1H'].candles, decimals),
     '15M': buildTimeframeSnapshot('15M', mtf.timeframes['15M'].candles, decimals),
     '5M': buildTimeframeSnapshot('5M', mtf.timeframes['5M'].candles, decimals),
   };
 
-  const primarySnap = snapshots[primaryTf];
+  if (!snapshots[primaryTf] && mtf.timeframes[primaryTf]) {
+    snapshots[primaryTf] = buildTimeframeSnapshot(
+      primaryTf,
+      mtf.timeframes[primaryTf].candles,
+      decimals
+    );
+  }
+
+  const primarySnap = snapshots[primaryTf] || snapshots['15M'];
   const swings = detectSwingPoints(primaryCandles, 2);
   const structureDetail = detectMarketStructure(primaryCandles, swings, decimals);
   const session = detectSessionAndLiquiditySweep(primaryCandles, decimals, referenceDate);

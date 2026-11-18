@@ -251,6 +251,7 @@ export async function POST(request: NextRequest) {
       stop_loss: result.stop_loss,
       take_profit_1: result.take_profit_1,
       take_profit_2: result.take_profit_2,
+      take_profit_3: result.take_profit_3,
       risk_reward_ratio: result.risk_reward_ratio,
       key_confluences: result.key_confluences,
       invalidation_condition: result.invalidation_condition,
@@ -262,6 +263,7 @@ export async function POST(request: NextRequest) {
       stop_loss_y: result.stop_loss_y,
       tp1_y: result.tp1_y,
       tp2_y: result.tp2_y,
+      tp3_y: result.tp3_y,
       zones: result.zones,
       prediction_path: result.prediction_path,
       market_mechanics_explanation: result.market_mechanics_explanation,
@@ -287,54 +289,61 @@ export async function POST(request: NextRequest) {
       outcome: 'PENDING',
     });
 
-    const user = await prisma.user.findFirst({ where: { email: 'trader@apexvisionai.io' } });
-    const savedSignal = await prisma.signal.create({
-      data: {
-        userId: user?.id,
-        asset: analysis.asset,
-        timeframe: analysis.timeframe,
-        marketBias: analysis.market_bias,
-        tradeRecommendation: analysis.trade_recommendation,
-        confidenceScore: analysis.confidence_score,
-        entryPrice: analysis.entry_price,
-        stopLoss: analysis.stop_loss,
-        takeProfit1: analysis.take_profit_1,
-        takeProfit2: analysis.take_profit_2,
-        riskRewardRatio: analysis.risk_reward_ratio,
-        keyConfluences: JSON.stringify(analysis.key_confluences),
-        invalidationCondition: analysis.invalidation_condition,
-        analysisSummary: analysis.summary,
-        chartImageUrl: imageData || undefined,
-        rawVisionOutput: JSON.stringify({
+    let signalId = `sig_${Date.now()}`;
+    try {
+      const user = await prisma.user.findFirst({ where: { email: 'trader@apexvisionai.io' } });
+      const savedSignal = await prisma.signal.create({
+        data: {
+          userId: user?.id,
           asset: analysis.asset,
           timeframe: analysis.timeframe,
-          chart_type: analysis.chart_type,
-          analysis_mode: analysis.analysis_mode,
-          bias: analysis.bias,
-          confidence_score: analysis.confidence_score,
-          current_market_phase: analysis.current_market_phase,
-          what_is_happening: analysis.what_is_happening,
-          how_it_works_steps: analysis.how_it_works_steps,
-          entry_y: analysis.entry_y,
-          stop_loss_y: analysis.stop_loss_y,
-          tp1_y: analysis.tp1_y,
-          tp2_y: analysis.tp2_y,
-          zones: analysis.zones,
-          prediction_path: analysis.prediction_path,
-          market_mechanics_explanation: analysis.market_mechanics_explanation,
-          trading_tools_analysis: analysis.trading_tools_analysis,
-          trade_execution: analysis.trade_execution,
-          visual_proof_annotations: analysis.visual_proof_annotations,
-        }),
-        status: 'ACTIVE',
-        mt5Executed: false,
-      },
-    });
+          marketBias: analysis.market_bias,
+          tradeRecommendation: analysis.trade_recommendation,
+          confidenceScore: analysis.confidence_score,
+          entryPrice: analysis.entry_price,
+          stopLoss: analysis.stop_loss,
+          takeProfit1: analysis.take_profit_1,
+          takeProfit2: analysis.take_profit_2,
+          riskRewardRatio: analysis.risk_reward_ratio,
+          keyConfluences: JSON.stringify(analysis.key_confluences),
+          invalidationCondition: analysis.invalidation_condition,
+          analysisSummary: analysis.summary,
+          chartImageUrl: imageData || undefined,
+          rawVisionOutput: JSON.stringify({
+            asset: analysis.asset,
+            timeframe: analysis.timeframe,
+            chart_type: analysis.chart_type,
+            analysis_mode: analysis.analysis_mode,
+            bias: analysis.bias,
+            confidence_score: analysis.confidence_score,
+            current_market_phase: analysis.current_market_phase,
+            what_is_happening: analysis.what_is_happening,
+            how_it_works_steps: analysis.how_it_works_steps,
+            entry_y: analysis.entry_y,
+            stop_loss_y: analysis.stop_loss_y,
+            tp1_y: analysis.tp1_y,
+            tp2_y: analysis.tp2_y,
+            tp3_y: analysis.tp3_y,
+            zones: analysis.zones,
+            prediction_path: analysis.prediction_path,
+            market_mechanics_explanation: analysis.market_mechanics_explanation,
+            trading_tools_analysis: analysis.trading_tools_analysis,
+            trade_execution: analysis.trade_execution,
+            visual_proof_annotations: analysis.visual_proof_annotations,
+          }),
+          status: 'ACTIVE',
+          mt5Executed: false,
+        },
+      });
+      signalId = savedSignal.id;
+    } catch (dbErr) {
+      console.warn('Non-fatal signal persistence warning:', dbErr);
+    }
 
     return NextResponse.json({
       success: true,
       analysis,
-      signalId: savedSignal.id,
+      signalId,
       chartImageUrl: imageData || undefined,
     });
   } catch (error) {

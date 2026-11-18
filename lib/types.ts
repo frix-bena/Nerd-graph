@@ -35,6 +35,7 @@ export interface TradeExecution {
   stop_loss: number | string;
   take_profit_1: number | string;
   take_profit_2: number | string;
+  take_profit_3?: number | string;
   risk_to_reward: string;
   invalidation_condition: string;
 }
@@ -75,10 +76,12 @@ export interface VisualProofAnnotations {
   stop_loss_y: number;
   tp1_y: number;
   tp2_y: number;
+  tp3_y?: number;
   entry_y_percent: number;
   stop_loss_y_percent: number;
   tp1_y_percent: number;
   tp2_y_percent: number;
+  tp3_y_percent?: number;
   zones: VisualProofZone[];
   prediction_path: PredictionPathPoint[];
 }
@@ -111,6 +114,7 @@ export interface InstitutionalSMCAnalysis {
   stop_loss_y: number;
   tp1_y: number;
   tp2_y: number;
+  tp3_y?: number;
   zones: VisualProofZone[];
   prediction_path: PredictionPathPoint[];
   market_mechanics_explanation: MarketMechanicsExplanation;
@@ -127,6 +131,7 @@ export interface TradeAnalysis extends InstitutionalSMCAnalysis {
   stop_loss: number;
   take_profit_1: number;
   take_profit_2: number;
+  take_profit_3?: number;
   risk_reward_ratio: string;
   key_confluences: string[];
   invalidation_condition: string;
@@ -141,6 +146,7 @@ export interface SMCSignalOutput extends InstitutionalSMCAnalysis {
   stop_loss: number;
   take_profit_1: number;
   take_profit_2: number;
+  take_profit_3?: number;
   risk_reward_ratio: string;
   key_confluences: string[];
   invalidation_condition: string;
@@ -180,4 +186,64 @@ export interface UserProfile {
   mt5Server: string;
   mt5Connected: boolean;
   webhookToken: string;
+}
+
+export function formatSignalPrice(value: unknown, asset?: string): string {
+  const num =
+    typeof value === 'number'
+      ? value
+      : typeof value === 'string'
+      ? Number.parseFloat(value.replace(/[^0-9.-]+/g, ''))
+      : 0;
+  if (!Number.isFinite(num) || num <= 0) return '—';
+  const upperAsset = String(asset || '').toUpperCase();
+  if (
+    upperAsset.includes('EUR') ||
+    upperAsset.includes('GBP') ||
+    upperAsset.includes('AUD') ||
+    upperAsset.includes('NZD') ||
+    upperAsset.includes('CAD') ||
+    upperAsset.includes('CHF')
+  ) {
+    if (!upperAsset.includes('JPY') && num < 20) {
+      return num.toLocaleString('en-US', {
+        minimumFractionDigits: 4,
+        maximumFractionDigits: 5,
+      });
+    }
+  }
+  if (upperAsset.includes('JPY')) {
+    return num.toLocaleString('en-US', {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 3,
+    });
+  }
+  if (upperAsset.includes('XAU') || upperAsset.includes('GOLD')) {
+    return num.toLocaleString('en-US', {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    });
+  }
+  if (num < 1) {
+    return num.toLocaleString('en-US', {
+      minimumFractionDigits: 4,
+      maximumFractionDigits: 6,
+    });
+  }
+  if (num < 20) {
+    return num.toLocaleString('en-US', {
+      minimumFractionDigits: 4,
+      maximumFractionDigits: 5,
+    });
+  }
+  if (num < 10000) {
+    return num.toLocaleString('en-US', {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    });
+  }
+  return num.toLocaleString('en-US', {
+    minimumFractionDigits: 1,
+    maximumFractionDigits: 2,
+  });
 }

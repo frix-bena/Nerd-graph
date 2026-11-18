@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { SMCSignalOutput } from '@/lib/types';
+import { SMCSignalOutput, formatSignalPrice } from '@/lib/types';
 import InteractiveChartOverlay from './InteractiveChartOverlay';
 import {
   TrendingUp,
@@ -42,6 +42,7 @@ export default function SignalDashboard({
   showExecutionControls = true,
 }: SignalDashboardProps) {
   const [copiedPayload, setCopiedPayload] = useState(false);
+  const [copiedLevels, setCopiedLevels] = useState(false);
 
   const setupType =
     signal.trade_execution?.setup_type ||
@@ -60,6 +61,30 @@ export default function SignalDashboard({
     (String(chartType).toUpperCase().includes('LINE')
       ? 'MACRO_PRICE_ACTION'
       : 'SMC_CANDLESTICK');
+
+  const entryPriceNum = Number(signal.entry_price || signal.trade_execution?.entry_price || 0);
+  const stopLossNum = Number(signal.stop_loss || signal.trade_execution?.stop_loss || 0);
+  const tp1Num = Number(signal.take_profit_1 || signal.trade_execution?.take_profit_1 || 0);
+  const tp2Num = Number(signal.take_profit_2 || signal.trade_execution?.take_profit_2 || 0);
+  const rawTp3Num = Number(signal.take_profit_3 ?? signal.trade_execution?.take_profit_3 ?? 0);
+  const riskDist = entryPriceNum > 0 && stopLossNum > 0 ? Math.abs(entryPriceNum - stopLossNum) : 0;
+  const tp3Num =
+    rawTp3Num > 0
+      ? rawTp3Num
+      : tp2Num > 0 && tp1Num > 0
+      ? isSell
+        ? Math.max(0.0001, Number((tp2Num - Math.abs(tp2Num - tp1Num)).toFixed(5)))
+        : Number((tp2Num + Math.abs(tp2Num - tp1Num)).toFixed(5))
+      : 0;
+
+  const calcRR = (tp: number) =>
+    riskDist > 0 && tp > 0 && entryPriceNum > 0
+      ? `1:${Math.abs((tp - entryPriceNum) / riskDist).toFixed(2)}`
+      : null;
+
+  const rrTp1 = calcRR(tp1Num) || signal.trade_execution?.risk_to_reward || signal.risk_reward_ratio;
+  const rrTp2 = calcRR(tp2Num);
+  const rrTp3 = calcRR(tp3Num);
 
   const currentMarketPhase =
     signal.current_market_phase ||
@@ -104,17 +129,44 @@ export default function SignalDashboard({
     signal.visual_proof_annotations?.tp2_y ??
     signal.visual_proof_annotations?.tp2_y_percent ??
     18;
+  const tp3Y =
+    signal.tp3_y ??
+    signal.visual_proof_annotations?.tp3_y ??
+    signal.visual_proof_annotations?.tp3_y_percent ??
+    (isBuy ? 10 : 90);
   const zones = signal.zones || signal.visual_proof_annotations?.zones || [];
+
+  const copyTradeLevelsText = () => {
+    const text = [
+      `${signal.asset} (${signal.timeframe}) — ${setupType}`,
+      `Entry Price: ${formatSignalPrice(entryPriceNum, signal.asset)}`,
+      `Stop Loss (SL): ${formatSignalPrice(stopLossNum, signal.asset)}`,
+      `Take Profit 1 (TP1): ${formatSignalPrice(tp1Num, signal.asset)}${rrTp1 ? ` (${rrTp1})` : ''}`,
+      `Take Profit 2 (TP2): ${formatSignalPrice(tp2Num, signal.asset)}${rrTp2 ? ` (${rrTp2})` : ''}`,
+      ...(tp3Num > 0
+        ? [
+            `Take Profit 3 (TP3): ${formatSignalPrice(tp3Num, signal.asset)}${
+              rrTp3 ? ` (${rrTp3})` : ''
+            }`,
+          ]
+        : []),
+    ].join('\n');
+    navigator.clipboard.writeText(text);
+    setCopiedLevels(true);
+    setTimeout(() => setCopiedLevels(false), 2200);
+  };
 
   const copyPayload = () => {
     const payload = {
       action: 'ORDER_OPEN',
       symbol: signal.asset,
+      timeframe: signal.timeframe,
       side: signal.trade_recommendation,
-      entry: signal.entry_price,
-      stopLoss: signal.stop_loss,
-      takeProfit1: signal.take_profit_1,
-      takeProfit2: signal.take_profit_2,
+      entry: entryPriceNum,
+      stopLoss: stopLossNum,
+      takeProfit1: tp1Num,
+      takeProfit2: tp2Num,
+      takeProfit3: tp3Num,
       rrr,
       confidence: signal.confidence_score,
       timestamp: new Date().toISOString(),
@@ -200,7 +252,16 @@ export default function SignalDashboard({
           </div>
 
           {/* Quick Buttons */}
-          <div className="flex items-center gap-2 w-full sm:w-auto">
+          <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
+            <button
+              type="button"
+              onClick={copyTradeLevelsText}
+              className="flex-1 sm:flex-initial px-3.5 py-2 rounded-lg bg-[#EFF6FF] hover:bg-[#DBEAFE] text-xs font-bold text-[#1D4ED8] border border-[#93C5FD] flex items-center justify-center gap-1.5 transition-all"
+            >
+              <Copy className="w-3.5 h-3.5" />
+              <span>{copiedLevels ? '✓ Levels Copied!' : 'Copy Entry / SL / TP'}</span>
+            </button>
+
             <button
               type="button"
               onClick={onReset}
@@ -241,6 +302,117 @@ export default function SignalDashboard({
             )}
           </div>
         </div>
+
+        {/* Prominent Agent Execution Levels Bar (Entry Price, Stop Loss, Take Profit 1, Take Profit 2, Take Profit 3) */}
+        <div className="mt-5 pt-4 border-t border-[#E2E8F0]">
+          <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+            <div className="flex items-center gap-2 text-xs font-mono font-bold uppercase tracking-wider text-[#0F172A]">
+              <Crosshair className="w-4 h-4 text-[#1D4ED8]" />
+              <span>Agent Analysed Trade Levels — Entry, Stop Loss &amp; Take Profits</span>
+            </div>
+            <span className="rounded-full border border-[#93C5FD] bg-[#EFF6FF] px-2.5 py-0.5 text-[11px] font-mono font-bold text-[#1D4ED8]">
+              Primary R:R {rrr}
+            </span>
+          </div>
+
+          <div className="grid grid-cols-2 sm:grid-cols-5 gap-2.5">
+            {/* Entry Price */}
+            <div className="rounded-xl border-2 border-[#F59E0B] bg-[#FEF3C7]/45 p-3">
+              <div className="flex items-center justify-between gap-1">
+                <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-[#0F172A]">
+                  Entry Price
+                </span>
+                <span className="rounded bg-[#F59E0B] px-1.5 py-0.5 font-mono text-[9px] font-bold text-[#0F172A]">
+                  {isBuy ? 'BUY' : isSell ? 'SELL' : 'ENTRY'}
+                </span>
+              </div>
+              <p className="mt-1 font-mono text-base sm:text-lg font-extrabold text-[#0F172A]">
+                {formatSignalPrice(entryPriceNum, signal.asset)}
+              </p>
+              <p className="mt-0.5 text-[10px] font-mono text-[#475569]">
+                Institutional Execution Zone
+              </p>
+            </div>
+
+            {/* Stop Loss */}
+            <div className="rounded-xl border-2 border-[#EF4444] bg-[#FEF2F2] p-3">
+              <div className="flex items-center justify-between gap-1">
+                <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-[#EF4444]">
+                  Stop Loss (SL)
+                </span>
+                <span className="rounded bg-[#EF4444] px-1.5 py-0.5 font-mono text-[9px] font-bold text-white">
+                  0.5x ATR
+                </span>
+              </div>
+              <p className="mt-1 font-mono text-base sm:text-lg font-extrabold text-[#EF4444]">
+                {formatSignalPrice(stopLossNum, signal.asset)}
+              </p>
+              <p className="mt-0.5 text-[10px] font-mono text-[#475569]">
+                Structural Invalidation
+              </p>
+            </div>
+
+            {/* Take Profit 1 */}
+            <div className="rounded-xl border border-[#93C5FD] bg-[#EFF6FF] p-3">
+              <div className="flex items-center justify-between gap-1">
+                <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-[#1D4ED8]">
+                  Take Profit 1
+                </span>
+                {rrTp1 && (
+                  <span className="rounded bg-[#1D4ED8]/15 px-1.5 py-0.5 font-mono text-[9px] font-bold text-[#1D4ED8]">
+                    {rrTp1}
+                  </span>
+                )}
+              </div>
+              <p className="mt-1 font-mono text-base sm:text-lg font-extrabold text-[#1D4ED8]">
+                {formatSignalPrice(tp1Num, signal.asset)}
+              </p>
+              <p className="mt-0.5 text-[10px] font-mono text-[#475569]">
+                Internal Liquidity Target
+              </p>
+            </div>
+
+            {/* Take Profit 2 */}
+            <div className="rounded-xl border border-[#1D4ED8] bg-[#EFF6FF] p-3">
+              <div className="flex items-center justify-between gap-1">
+                <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-[#1D4ED8]">
+                  Take Profit 2
+                </span>
+                {rrTp2 && (
+                  <span className="rounded bg-[#1D4ED8] px-1.5 py-0.5 font-mono text-[9px] font-bold text-white">
+                    {rrTp2}
+                  </span>
+                )}
+              </div>
+              <p className="mt-1 font-mono text-base sm:text-lg font-extrabold text-[#1D4ED8]">
+                {formatSignalPrice(tp2Num, signal.asset)}
+              </p>
+              <p className="mt-0.5 text-[10px] font-mono text-[#475569]">
+                Primary Structural Target
+              </p>
+            </div>
+
+            {/* Take Profit 3 */}
+            <div className="col-span-2 sm:col-span-1 rounded-xl border-2 border-[#1D4ED8] bg-[#DBEAFE]/55 p-3">
+              <div className="flex items-center justify-between gap-1">
+                <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-[#0F172A]">
+                  Take Profit 3
+                </span>
+                {rrTp3 && (
+                  <span className="rounded bg-[#0F172A] px-1.5 py-0.5 font-mono text-[9px] font-bold text-white">
+                    {rrTp3}
+                  </span>
+                )}
+              </div>
+              <p className="mt-1 font-mono text-base sm:text-lg font-extrabold text-[#1D4ED8]">
+                {formatSignalPrice(tp3Num, signal.asset)}
+              </p>
+              <p className="mt-0.5 text-[10px] font-mono text-[#475569]">
+                Extended Runner Target
+              </p>
+            </div>
+          </div>
+        </div>
       </div>
 
       {/* Split Layout: Chart View Side-by-Side with Institutional Mechanics & Tools Breakdown */}
@@ -269,6 +441,48 @@ export default function SignalDashboard({
             <p className="text-sm text-[#0F172A] leading-relaxed font-medium">
               {technicalSummary}
             </p>
+
+            {/* Explicit Execution Summary Strip inside Technical Summary */}
+            <div className="rounded-xl border border-[#BFDBFE] bg-[#EFF6FF]/60 p-3 flex flex-wrap items-center justify-between gap-2 text-xs font-mono">
+              <span className="font-bold text-[#0F172A]">
+                ENTRY:{' '}
+                <span className="text-[#1D4ED8]">
+                  {formatSignalPrice(entryPriceNum, signal.asset)}
+                </span>
+              </span>
+              <span className="text-[#CBD5E1]">|</span>
+              <span className="font-bold text-[#0F172A]">
+                SL:{' '}
+                <span className="text-[#EF4444]">
+                  {formatSignalPrice(stopLossNum, signal.asset)}
+                </span>
+              </span>
+              <span className="text-[#CBD5E1]">|</span>
+              <span className="font-bold text-[#0F172A]">
+                TP1:{' '}
+                <span className="text-[#1D4ED8]">
+                  {formatSignalPrice(tp1Num, signal.asset)}
+                </span>
+              </span>
+              <span className="text-[#CBD5E1]">|</span>
+              <span className="font-bold text-[#0F172A]">
+                TP2:{' '}
+                <span className="text-[#1D4ED8]">
+                  {formatSignalPrice(tp2Num, signal.asset)}
+                </span>
+              </span>
+              {tp3Num > 0 && (
+                <>
+                  <span className="text-[#CBD5E1]">|</span>
+                  <span className="font-bold text-[#0F172A]">
+                    TP3:{' '}
+                    <span className="text-[#1D4ED8]">
+                      {formatSignalPrice(tp3Num, signal.asset)}
+                    </span>
+                  </span>
+                </>
+              )}
+            </div>
 
             {signal.key_confluences?.length > 0 && (
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
@@ -357,36 +571,55 @@ export default function SignalDashboard({
               {[
                 {
                   label: 'Entry Price',
-                  value: signal.entry_price,
+                  value: entryPriceNum,
                   color: '#0F172A',
                   badge: '#F59E0B',
                   yPct: entryY,
+                  sub: isBuy ? 'Buy Execution' : isSell ? 'Sell Execution' : 'Entry Level',
                 },
                 {
-                  label: 'Stop Loss',
-                  value: signal.stop_loss,
+                  label: 'Stop Loss (SL)',
+                  value: stopLossNum,
                   color: '#EF4444',
                   badge: '#EF4444',
                   yPct: stopLossY,
+                  sub: 'Invalidation + 0.5x ATR',
                 },
                 {
-                  label: 'Take Profit 1',
-                  value: signal.take_profit_1,
+                  label: 'Take Profit 1 (TP1)',
+                  value: tp1Num,
                   color: '#1D4ED8',
                   badge: '#2563EB',
                   yPct: tp1Y,
+                  sub: rrTp1 ? `Conservative (${rrTp1})` : 'Target 1',
                 },
                 {
-                  label: 'Take Profit 2',
-                  value: signal.take_profit_2,
+                  label: 'Take Profit 2 (TP2)',
+                  value: tp2Num,
                   color: '#1D4ED8',
                   badge: '#1D4ED8',
                   yPct: tp2Y,
+                  sub: rrTp2 ? `Primary (${rrTp2})` : 'Target 2',
                 },
+                ...(tp3Num > 0
+                  ? [
+                      {
+                        label: 'Take Profit 3 (TP3)',
+                        value: tp3Num,
+                        color: '#1D4ED8',
+                        badge: '#0F172A',
+                        yPct: tp3Y,
+                        sub: rrTp3 ? `Extended Runner (${rrTp3})` : 'Target 3',
+                        fullWidth: true,
+                      },
+                    ]
+                  : []),
               ].map((level) => (
                 <div
                   key={level.label}
-                  className="rounded-xl border border-[#E2E8F0] bg-[#F8FAFC] p-3"
+                  className={`rounded-xl border border-[#E2E8F0] bg-[#F8FAFC] p-3 ${
+                    'fullWidth' in level && level.fullWidth ? 'col-span-2' : ''
+                  }`}
                 >
                   <div className="flex items-center justify-between gap-1.5">
                     <div className="flex items-center gap-1.5">
@@ -404,12 +637,19 @@ export default function SignalDashboard({
                       </span>
                     )}
                   </div>
-                  <p
-                    className="mt-1 font-mono text-base font-extrabold"
-                    style={{ color: level.color }}
-                  >
-                    {level.value.toLocaleString()}
-                  </p>
+                  <div className="mt-1 flex items-baseline justify-between gap-2">
+                    <p
+                      className="font-mono text-base font-extrabold"
+                      style={{ color: level.color }}
+                    >
+                      {formatSignalPrice(level.value, signal.asset)}
+                    </p>
+                    {level.sub && (
+                      <span className="text-[10px] font-mono text-[#475569]">
+                        {level.sub}
+                      </span>
+                    )}
+                  </div>
                 </div>
               ))}
             </div>

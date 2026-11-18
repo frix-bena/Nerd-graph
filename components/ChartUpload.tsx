@@ -23,8 +23,34 @@ interface ChartUploadProps {
   onImageChange?: (imageData: string) => void;
 }
 
-const ASSETS = ['XAUUSD', 'EURUSD', 'GBPUSD', 'NAS100', 'BTCUSDT', 'US30'];
-const TIMEFRAMES = ['5M', '15M', '1H', '4H', '1D'];
+const ASSETS = [
+  'XAUUSD',
+  'EURUSD',
+  'GBPUSD',
+  'USDJPY',
+  'NAS100',
+  'US30',
+  'BTCUSDT',
+  'ETHUSDT',
+];
+
+const TIMEFRAME_OPTIONS: {
+  value: string;
+  label: string;
+  category: 'Scalping' | 'Intraday' | 'Swing / Macro';
+}[] = [
+  { value: '1M', label: '1M', category: 'Scalping' },
+  { value: '3M', label: '3M', category: 'Scalping' },
+  { value: '5M', label: '5M', category: 'Scalping' },
+  { value: '15M', label: '15M', category: 'Intraday' },
+  { value: '30M', label: '30M', category: 'Intraday' },
+  { value: '1H', label: '1H', category: 'Intraday' },
+  { value: '2H', label: '2H', category: 'Swing / Macro' },
+  { value: '4H', label: '4H', category: 'Swing / Macro' },
+  { value: '1D', label: '1D', category: 'Swing / Macro' },
+  { value: '1W', label: '1W', category: 'Swing / Macro' },
+  { value: '1MO', label: '1MO', category: 'Swing / Macro' },
+];
 const ACCEPTED_TYPES = ['image/png', 'image/jpeg', 'image/jpg', 'image/webp'];
 const MAX_FILE_SIZE = 10 * 1024 * 1024;
 
@@ -124,44 +150,59 @@ export default function ChartUpload({
         </p>
       </div>
 
-      <div className="flex flex-wrap gap-2">
-        <div className="flex flex-wrap items-center gap-1.5">
-          <span className="text-[10px] font-semibold uppercase tracking-wider text-[#475569]">
-            Asset
-          </span>
-          {ASSETS.map((value) => (
-            <button
-              key={value}
-              type="button"
-              onClick={() => setAsset(value)}
-              className={`rounded-full border px-2.5 py-1 text-[11px] font-mono font-semibold transition ${
-                asset === value
-                  ? 'border-[#1D4ED8] bg-[#EFF6FF] text-[#1D4ED8]'
-                  : 'border-[#CBD5E1] bg-[#F8FAFC] text-[#475569] hover:border-[#93C5FD] hover:bg-[#EFF6FF]/60 hover:text-[#0F172A]'
-              }`}
-            >
-              {value}
-            </button>
-          ))}
+      <div className="space-y-3 rounded-xl border border-[#E2E8F0] bg-[#F8FAFC] p-3.5">
+        <div className="space-y-1.5">
+          <div className="flex items-center justify-between">
+            <span className="text-[10px] font-bold uppercase tracking-wider text-[#475569]">
+              Select Asset / Market
+            </span>
+            <span className="font-mono text-[10px] font-bold text-[#1D4ED8]">{asset}</span>
+          </div>
+          <div className="flex flex-wrap items-center gap-1.5">
+            {ASSETS.map((value) => (
+              <button
+                key={value}
+                type="button"
+                onClick={() => setAsset(value)}
+                className={`rounded-full border px-2.5 py-1 text-[11px] font-mono font-semibold transition ${
+                  asset === value
+                    ? 'border-[#1D4ED8] bg-[#EFF6FF] text-[#1D4ED8] shadow-sm'
+                    : 'border-[#CBD5E1] bg-white text-[#475569] hover:border-[#93C5FD] hover:bg-[#EFF6FF]/60 hover:text-[#0F172A]'
+                }`}
+              >
+                {value}
+              </button>
+            ))}
+          </div>
         </div>
-        <div className="flex flex-wrap items-center gap-1.5 sm:ml-auto">
-          <span className="text-[10px] font-semibold uppercase tracking-wider text-[#475569]">
-            Timeframe
-          </span>
-          {TIMEFRAMES.map((value) => (
-            <button
-              key={value}
-              type="button"
-              onClick={() => setTimeframe(value)}
-              className={`rounded-full border px-2.5 py-1 text-[11px] font-mono font-semibold transition ${
-                timeframe === value
-                  ? 'border-[#1D4ED8] bg-[#EFF6FF] text-[#1D4ED8]'
-                  : 'border-[#CBD5E1] bg-[#F8FAFC] text-[#475569] hover:border-[#93C5FD] hover:bg-[#EFF6FF]/60 hover:text-[#0F172A]'
-              }`}
-            >
-              {value}
-            </button>
-          ))}
+
+        <div className="border-t border-[#E2E8F0] pt-2.5 space-y-1.5">
+          <div className="flex items-center justify-between">
+            <span className="text-[10px] font-bold uppercase tracking-wider text-[#475569]">
+              Select Timeframe (Scalp · Intraday · Swing · Macro)
+            </span>
+            <span className="font-mono text-[10px] font-bold text-[#1D4ED8]">
+              {timeframe} ·{' '}
+              {TIMEFRAME_OPTIONS.find((t) => t.value === timeframe)?.category || 'Intraday'}
+            </span>
+          </div>
+          <div className="flex flex-wrap items-center gap-1.5">
+            {TIMEFRAME_OPTIONS.map((tf) => (
+              <button
+                key={tf.value}
+                type="button"
+                title={`${tf.label} (${tf.category})`}
+                onClick={() => setTimeframe(tf.value)}
+                className={`rounded-full border px-2.5 py-1 text-[11px] font-mono font-semibold transition ${
+                  timeframe === tf.value
+                    ? 'border-[#1D4ED8] bg-[#1D4ED8] text-white shadow-sm'
+                    : 'border-[#CBD5E1] bg-white text-[#475569] hover:border-[#93C5FD] hover:bg-[#EFF6FF]/60 hover:text-[#0F172A]'
+                }`}
+              >
+                {tf.label}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
 

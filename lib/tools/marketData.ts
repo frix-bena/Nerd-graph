@@ -1,4 +1,33 @@
-export type SupportedTimeframe = '4H' | '1H' | '15M' | '5M';
+export type SupportedTimeframe =
+  | '1M'
+  | '3M'
+  | '5M'
+  | '15M'
+  | '30M'
+  | '1H'
+  | '2H'
+  | '4H'
+  | '1D'
+  | '1W'
+  | '1MO';
+
+export const SELECTABLE_TIMEFRAMES: {
+  value: SupportedTimeframe;
+  label: string;
+  group: 'Scalping' | 'Intraday' | 'Swing & Macro';
+}[] = [
+  { value: '1M', label: '1m', group: 'Scalping' },
+  { value: '3M', label: '3m', group: 'Scalping' },
+  { value: '5M', label: '5m', group: 'Scalping' },
+  { value: '15M', label: '15m', group: 'Intraday' },
+  { value: '30M', label: '30m', group: 'Intraday' },
+  { value: '1H', label: '1H', group: 'Intraday' },
+  { value: '2H', label: '2H', group: 'Swing & Macro' },
+  { value: '4H', label: '4H', group: 'Swing & Macro' },
+  { value: '1D', label: '1D', group: 'Swing & Macro' },
+  { value: '1W', label: '1W', group: 'Swing & Macro' },
+  { value: '1MO', label: '1M (Monthly)', group: 'Swing & Macro' },
+];
 
 export type SupportedAsset =
   | 'XAUUSD'
@@ -44,7 +73,7 @@ export interface MultiTimeframeMarketContext {
   source: MarketDataSource;
   mt5BridgeStatus: 'ONLINE' | 'OFFLINE_FALLBACK';
   fetchedAt: string;
-  timeframes: Record<SupportedTimeframe, TimeframeMarketData>;
+  timeframes: Record<string, TimeframeMarketData>;
   promptSummary: string;
 }
 
@@ -80,10 +109,56 @@ export function normalizeAssetSymbol(rawAsset?: string): string {
 
 export function normalizeTimeframeKey(rawTf?: string): SupportedTimeframe {
   const upper = String(rawTf || '15M').toUpperCase().trim();
-  if (upper.includes('4H') || upper === 'H4' || upper === '240') return '4H';
-  if (upper.includes('1H') || upper === 'H1' || upper === '60' || upper.includes('HOUR'))
+  if (
+    upper === '1MO' ||
+    upper === 'MN' ||
+    upper === '1MTH' ||
+    upper.includes('MONTH')
+  ) {
+    return '1MO';
+  }
+  if (upper === '1W' || upper === 'W1' || upper.includes('WEEK')) {
+    return '1W';
+  }
+  if (
+    upper === '1D' ||
+    upper === 'D1' ||
+    upper === '24H' ||
+    upper.includes('DAY') ||
+    upper.includes('DAILY')
+  ) {
+    return '1D';
+  }
+  if (upper.includes('4H') || upper === 'H4' || upper === '240' || upper === '240M') {
+    return '4H';
+  }
+  if (upper.includes('2H') || upper === 'H2' || upper === '120' || upper === '120M') {
+    return '2H';
+  }
+  if (
+    upper.includes('1H') ||
+    upper === 'H1' ||
+    upper === '60' ||
+    upper === '60M' ||
+    upper.includes('HOUR')
+  ) {
     return '1H';
-  if (upper.includes('5M') || upper === 'M5' || upper === '5') return '5M';
+  }
+  if (upper.includes('30M') || upper === 'M30' || upper === '30') {
+    return '30M';
+  }
+  if (upper.includes('15M') || upper === 'M15' || upper === '15') {
+    return '15M';
+  }
+  if (upper === '5M' || upper === 'M5' || upper === '5' || upper === '5MIN') {
+    return '5M';
+  }
+  if (upper === '3M' || upper === 'M3' || upper === '3' || upper === '3MIN') {
+    return '3M';
+  }
+  if (upper === '1M' || upper === 'M1' || upper === '1' || upper === '1MIN') {
+    return '1M';
+  }
   return '15M';
 }
 
@@ -210,10 +285,17 @@ async function tryFetchFromTwelveData(
     US30: 'DJI',
   };
   const intervalMap: Record<SupportedTimeframe, string> = {
-    '4H': '4h',
-    '1H': '1h',
-    '15M': '15min',
+    '1M': '1min',
+    '3M': '5min',
     '5M': '5min',
+    '15M': '15min',
+    '30M': '30min',
+    '1H': '1h',
+    '2H': '2h',
+    '4H': '4h',
+    '1D': '1day',
+    '1W': '1week',
+    '1MO': '1month',
   };
 
   const tdSymbol = symbolMap[symbol] || symbol;
@@ -273,10 +355,17 @@ async function tryFetchFromBinance(
   if (!binanceSymbol) return null;
 
   const intervalMap: Record<SupportedTimeframe, string> = {
-    '4H': '4h',
-    '1H': '1h',
-    '15M': '15m',
+    '1M': '1m',
+    '3M': '3m',
     '5M': '5m',
+    '15M': '15m',
+    '30M': '30m',
+    '1H': '1h',
+    '2H': '2h',
+    '4H': '4h',
+    '1D': '1d',
+    '1W': '1w',
+    '1MO': '1M',
   };
 
   try {
@@ -327,10 +416,17 @@ async function tryFetchFromYahooFinance(
 
   const yahooTicker = yahooMap[symbol] || `${symbol}=X`;
   const intervalConfig: Record<SupportedTimeframe, { interval: string; range: string }> = {
-    '4H': { interval: '60m', range: '1mo' },
-    '1H': { interval: '60m', range: '10d' },
-    '15M': { interval: '15m', range: '5d' },
+    '1M': { interval: '1m', range: '1d' },
+    '3M': { interval: '5m', range: '2d' },
     '5M': { interval: '5m', range: '2d' },
+    '15M': { interval: '15m', range: '5d' },
+    '30M': { interval: '30m', range: '10d' },
+    '1H': { interval: '60m', range: '10d' },
+    '2H': { interval: '60m', range: '1mo' },
+    '4H': { interval: '60m', range: '1mo' },
+    '1D': { interval: '1d', range: '3mo' },
+    '1W': { interval: '1wk', range: '2y' },
+    '1MO': { interval: '1mo', range: '5y' },
   };
 
   const cfg = intervalConfig[timeframe];
@@ -440,16 +536,30 @@ function generateSyntheticInstitutionalCandles(
   };
 
   const tfMultiplier: Record<SupportedTimeframe, number> = {
-    '4H': 2.2,
-    '1H': 1.35,
-    '15M': 1.0,
+    '1M': 0.25,
+    '3M': 0.4,
     '5M': 0.55,
+    '15M': 1.0,
+    '30M': 1.18,
+    '1H': 1.35,
+    '2H': 1.75,
+    '4H': 2.2,
+    '1D': 4.5,
+    '1W': 9.0,
+    '1MO': 18.0,
   };
   const tfMinutes: Record<SupportedTimeframe, number> = {
-    '4H': 240,
-    '1H': 60,
-    '15M': 15,
+    '1M': 1,
+    '3M': 3,
     '5M': 5,
+    '15M': 15,
+    '30M': 30,
+    '1H': 60,
+    '2H': 120,
+    '4H': 240,
+    '1D': 1440,
+    '1W': 10080,
+    '1MO': 43200,
   };
 
   const unit = cfg.stepAtr * tfMultiplier[timeframe];
@@ -624,30 +734,34 @@ export async function fetchMultiTimeframeMarketData(
   const asset = normalizeAssetSymbol(rawAsset);
   const primaryTimeframe = normalizeTimeframeKey(rawTimeframe);
 
-  const results = await Promise.all(
-    REQUIRED_TIMEFRAMES.map((tf) => fetchTimeframeData(asset, tf))
+  const timeframesToFetch: SupportedTimeframe[] = Array.from(
+    new Set<SupportedTimeframe>([...REQUIRED_TIMEFRAMES, primaryTimeframe])
   );
 
-  const timeframes: Record<SupportedTimeframe, TimeframeMarketData> = {
-    '4H': results[0],
-    '1H': results[1],
-    '15M': results[2],
-    '5M': results[3],
-  };
+  const results = await Promise.all(
+    timeframesToFetch.map((tf) => fetchTimeframeData(asset, tf))
+  );
+
+  const timeframes: Record<string, TimeframeMarketData> = {};
+  timeframesToFetch.forEach((tf, idx) => {
+    timeframes[tf] = results[idx];
+  });
 
   const primaryData = timeframes[primaryTimeframe] || timeframes['15M'];
   const currentSpotPrice = primaryData.latestPrice;
   const mt5BridgeStatus =
     primaryData.source === 'MT5_BRIDGE' ? 'ONLINE' : 'OFFLINE_FALLBACK';
 
-  const tfSummaryLines = REQUIRED_TIMEFRAMES.map((tf) => {
-    const d = timeframes[tf];
-    const last3 = d.candles
-      .slice(-3)
-      .map((c) => `[O:${c.open} H:${c.high} L:${c.low} C:${c.close} V:${Math.round(c.volume)}]`)
-      .join(' -> ');
-    return `  - ${tf} (${d.source}): Close=${d.latestPrice} | Range=[${d.low24h} - ${d.high24h}] | Δ=${d.changePercent}% | Recent 3 Bars: ${last3}`;
-  }).join('\n');
+  const tfSummaryLines = timeframesToFetch
+    .map((tf) => {
+      const d = timeframes[tf];
+      const last3 = d.candles
+        .slice(-3)
+        .map((c) => `[O:${c.open} H:${c.high} L:${c.low} C:${c.close} V:${Math.round(c.volume)}]`)
+        .join(' -> ');
+      return `  - ${tf} (${d.source}): Close=${d.latestPrice} | Range=[${d.low24h} - ${d.high24h}] | Δ=${d.changePercent}% | Recent 3 Bars: ${last3}`;
+    })
+    .join('\n');
 
   const promptSummary = [
     `LIVE MULTI-TIMEFRAME MARKET DATA (${asset} | Primary TF: ${primaryTimeframe} | Bridge: ${mt5BridgeStatus}):`,

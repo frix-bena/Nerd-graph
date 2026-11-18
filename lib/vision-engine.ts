@@ -53,16 +53,16 @@ STAGE 3 — MULTI-FACTOR CONFLUENCE GATE & MANDATORY EXECUTION LEVELS:
   * Confluence 1: Market Structure (confirmed Higher High / Higher Low BOS/CHoCH for Bullish; Lower High / Lower Low BOS/CHoCH for Bearish).
   * Confluence 2: Liquidity Sweep or Key Support/Resistance Reaction (SSL sweep / demand shelf defense for Bullish; BSL sweep / supply ceiling rejection for Bearish).
   * Confluence 3: Unmitigated Institutional Array (Bullish FVG / Demand OB in Discount for BUY; Bearish FVG / Supply OB in Premium for SELL; or clean horizontal flip zone on line charts).
-- CRITICAL MANDATE: You MUST ALWAYS provide concrete, non-zero numeric values for "entry_price", "stop_loss", "take_profit_1", and "take_profit_2" after analyzing any market screenshot. Even if the market is currently consolidating, provide the highest-probability institutional breakout or pullback Entry Price, Stop Loss, Take Profit 1, and Take Profit 2 from the chart's price axis (or from the provided live quantitative telemetry if the Y-axis is cropped). NEVER output 0, null, or "N/A" for entry_price, stop_loss, take_profit_1, or take_profit_2.
+- CRITICAL MANDATE: You MUST ALWAYS provide concrete, non-zero numeric values for "entry_price", "stop_loss", "take_profit_1", "take_profit_2", and "take_profit_3" after analyzing any market screenshot. Even if the market is currently consolidating, provide the highest-probability institutional breakout or pullback Entry Price, Stop Loss, Take Profit 1, Take Profit 2, and Take Profit 3 from the chart's price axis (or from the provided live quantitative telemetry if the Y-axis is cropped). NEVER output 0, null, or "N/A" for entry_price, stop_loss, take_profit_1, take_profit_2, or take_profit_3.
 
 STAGE 4 — STRICT DIRECTIONAL GEOMETRY & Y-COORDINATE ORDERING:
 - Remember that on image coordinates, Y = 0 is the TOP edge (HIGHEST price) and Y = 100 is the BOTTOM edge (LOWEST price).
 - If "setup_type" is "BUY SETUP" ("bias": "BULLISH"):
-  * Numeric prices MUST satisfy: stop_loss < entry_price < take_profit_1 < take_profit_2
-  * Normalized Y percentages (0-100) MUST satisfy: tp2_y < tp1_y < entry_y < stop_loss_y
+  * Numeric prices MUST satisfy: stop_loss < entry_price < take_profit_1 < take_profit_2 < take_profit_3
+  * Normalized Y percentages (0-100) MUST satisfy: tp3_y < tp2_y < tp1_y < entry_y < stop_loss_y
 - If "setup_type" is "SELL SETUP" ("bias": "BEARISH"):
-  * Numeric prices MUST satisfy: stop_loss > entry_price > take_profit_1 > take_profit_2
-  * Normalized Y percentages (0-100) MUST satisfy: stop_loss_y < entry_y < tp1_y < tp2_y
+  * Numeric prices MUST satisfy: stop_loss > entry_price > take_profit_1 > take_profit_2 > take_profit_3
+  * Normalized Y percentages (0-100) MUST satisfy: stop_loss_y < entry_y < tp1_y < tp2_y < tp3_y
 - Calculate "risk_to_reward" mathematically as 1 : ((take_profit_1 - entry_price) / (entry_price - stop_loss)), and ensure "stop_loss" accounts for structural invalidation plus a 0.5x ATR volatility buffer.
 
 STAGE 5 — TRAJECTORY PATH LOCKING:
@@ -101,6 +101,7 @@ Analyze the uploaded image and output ONLY a strictly valid JSON object matching
   "stop_loss_y": 0-100,
   "tp1_y": 0-100,
   "tp2_y": 0-100,
+  "tp3_y": 0-100,
   "zones": [
     {
       "x_start": 0-100,
@@ -134,11 +135,12 @@ Analyze the uploaded image and output ONLY a strictly valid JSON object matching
     "fibonacci_or_session_context": "Premium vs. Discount positioning or multi-day overlaid session trajectory comparison"
   },
   "trade_execution": {
-    "setup_type": "BUY SETUP | SELL SETUP | NO TRADE",
+    "setup_type": "BUY SETUP | SELL SETUP",
     "entry_price": "Exact numeric price read from the chart's Y-axis",
     "stop_loss": "Exact numeric price below/above structural invalidation",
     "take_profit_1": "Exact numeric price at first opposing liquidity or resistance/support target",
-    "take_profit_2": "Exact numeric price at major external target",
+    "take_profit_2": "Exact numeric price at primary external target",
+    "take_profit_3": "Exact numeric price at extended macro runner target",
     "risk_to_reward": "Calculated R:R ratio (e.g., 1:3.50)",
     "invalidation_condition": "Exact price action event that voids this setup"
   },
@@ -147,6 +149,7 @@ Analyze the uploaded image and output ONLY a strictly valid JSON object matching
     "stop_loss_y": 0-100,
     "tp1_y": 0-100,
     "tp2_y": 0-100,
+    "tp3_y": 0-100,
     "zones": [
       {
         "x_start": 0-100,
@@ -209,6 +212,54 @@ function getPriceDecimals(price: number): number {
   if (price < 10) return 4;
   if (price < 1000) return 2;
   return 1;
+}
+
+export function formatSignalPrice(value: unknown, asset?: string): string {
+  const num = typeof value === 'number' ? value : toNumericPrice(value);
+  if (!Number.isFinite(num) || num <= 0) return '—';
+  const upperAsset = String(asset || '').toUpperCase();
+  if (upperAsset.includes('EUR') || upperAsset.includes('GBP') || upperAsset.includes('AUD') || upperAsset.includes('NZD') || upperAsset.includes('CAD') || upperAsset.includes('CHF')) {
+    if (!upperAsset.includes('JPY') && num < 20) {
+      return num.toLocaleString('en-US', {
+        minimumFractionDigits: 4,
+        maximumFractionDigits: 5,
+      });
+    }
+  }
+  if (upperAsset.includes('JPY')) {
+    return num.toLocaleString('en-US', {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 3,
+    });
+  }
+  if (upperAsset.includes('XAU') || upperAsset.includes('GOLD')) {
+    return num.toLocaleString('en-US', {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    });
+  }
+  if (num < 1) {
+    return num.toLocaleString('en-US', {
+      minimumFractionDigits: 4,
+      maximumFractionDigits: 6,
+    });
+  }
+  if (num < 20) {
+    return num.toLocaleString('en-US', {
+      minimumFractionDigits: 4,
+      maximumFractionDigits: 5,
+    });
+  }
+  if (num < 10000) {
+    return num.toLocaleString('en-US', {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    });
+  }
+  return num.toLocaleString('en-US', {
+    minimumFractionDigits: 1,
+    maximumFractionDigits: 2,
+  });
 }
 
 function roundToPrecision(value: number, decimals: number): number {
@@ -745,16 +796,23 @@ export function normalizeSMCResponse(raw: Record<string, any>): SMCSignalOutput 
       ? raw.verification_calibration
       : {};
 
-  const rawStopLoss = toNumericPrice(exec.stop_loss ?? raw.stop_loss);
-  const rawTakeProfit1 = toNumericPrice(exec.take_profit_1 ?? raw.take_profit_1);
-  const rawTakeProfit2 = toNumericPrice(exec.take_profit_2 ?? raw.take_profit_2);
+  const rawStopLoss = toNumericPrice(exec.stop_loss ?? raw.stop_loss ?? exec.sl ?? raw.sl);
+  const rawTakeProfit1 = toNumericPrice(
+    exec.take_profit_1 ?? raw.take_profit_1 ?? exec.tp1 ?? raw.tp1 ?? exec.take_profits?.[0]
+  );
+  const rawTakeProfit2 = toNumericPrice(
+    exec.take_profit_2 ?? raw.take_profit_2 ?? exec.tp2 ?? raw.tp2 ?? exec.take_profits?.[1]
+  );
+  const rawTakeProfit3 = toNumericPrice(
+    exec.take_profit_3 ?? raw.take_profit_3 ?? exec.tp3 ?? raw.tp3 ?? exec.take_profits?.[2]
+  );
   const calCurrentPrice = toNumericPrice(calibration.current_market_price ?? raw.current_market_price);
   const calTopPrice = toNumericPrice(calibration.axis_top_price);
   const calBottomPrice = toNumericPrice(calibration.axis_bottom_price);
   const calMidPrice =
     calTopPrice > 0 && calBottomPrice > 0 ? Number(((calTopPrice + calBottomPrice) / 2).toFixed(5)) : 0;
 
-  let rawEntryPrice = toNumericPrice(exec.entry_price ?? raw.entry_price);
+  let rawEntryPrice = toNumericPrice(exec.entry_price ?? raw.entry_price ?? exec.entry ?? raw.entry);
   if (rawEntryPrice <= 0) {
     if (calCurrentPrice > 0) {
       rawEntryPrice = calCurrentPrice;
@@ -894,6 +952,36 @@ export function normalizeSMCResponse(raw: Record<string, any>): SMCSignalOutput 
     takeProfit2,
   } = reconciled;
   const adjustments = [...reconciled.adjustments];
+
+  const decimalsForTp3 = getPriceDecimals(entryPrice || takeProfit2 || takeProfit1 || stopLoss);
+  const isBullishSetup =
+    recommendation === 'BUY' || (recommendation === 'WAIT' && bias !== 'BEARISH');
+  let takeProfit3 =
+    rawTakeProfit3 > 0
+      ? repairPriceScaleOutlier(
+          rawTakeProfit3,
+          entryPrice || takeProfit2,
+          decimalsForTp3,
+          adjustments,
+          'take_profit_3'
+        )
+      : 0;
+
+  if (entryPrice > 0 && takeProfit2 > 0) {
+    const stepDist = Math.max(
+      Math.abs(takeProfit2 - takeProfit1),
+      Math.abs(entryPrice - stopLoss) * 1.2,
+      Math.pow(10, -decimalsForTp3) * 5
+    );
+    if (isBullishSetup && takeProfit3 <= takeProfit2) {
+      takeProfit3 = roundToPrecision(takeProfit2 + stepDist, decimalsForTp3);
+    } else if (!isBullishSetup && (takeProfit3 <= 0 || takeProfit3 >= takeProfit2)) {
+      takeProfit3 = roundToPrecision(
+        Math.max(Math.pow(10, -decimalsForTp3), takeProfit2 - stepDist),
+        decimalsForTp3
+      );
+    }
+  }
 
   // Exact mathematical Risk-to-Reward calculation matching (TP1 - Entry) / (Entry - SL)
   const riskDistance = entryPrice > 0 && stopLoss > 0 ? Math.abs(entryPrice - stopLoss) : 0;
@@ -1037,6 +1125,9 @@ export function normalizeSMCResponse(raw: Record<string, any>): SMCSignalOutput 
   });
 
   const { entryY, stopLossY, tp1Y, tp2Y, yMonotonic } = calibratedY;
+  const tp3Y = isBullish
+    ? Math.max(6, Math.min(tp2Y - 7, clampPercent(raw.tp3_y ?? annotations.tp3_y, 10)))
+    : Math.min(94, Math.max(tp2Y + 7, clampPercent(raw.tp3_y ?? annotations.tp3_y, 90)));
 
   const rawZonesInput = Array.isArray(raw.zones)
     ? raw.zones
@@ -1162,10 +1253,12 @@ export function normalizeSMCResponse(raw: Record<string, any>): SMCSignalOutput 
     stop_loss_y: stopLossY,
     tp1_y: tp1Y,
     tp2_y: tp2Y,
+    tp3_y: tp3Y,
     entry_y_percent: entryY,
     stop_loss_y_percent: stopLossY,
     tp1_y_percent: tp1Y,
     tp2_y_percent: tp2Y,
+    tp3_y_percent: tp3Y,
     zones: normalizedZones,
     prediction_path: normalizedPath,
   };
@@ -1210,6 +1303,7 @@ export function normalizeSMCResponse(raw: Record<string, any>): SMCSignalOutput 
     stop_loss: stopLoss,
     take_profit_1: takeProfit1,
     take_profit_2: takeProfit2,
+    take_profit_3: takeProfit3,
     risk_reward_ratio: riskToReward,
     key_confluences: keyConfluences,
     invalidation_condition: invalidationCondition,
@@ -1221,6 +1315,7 @@ export function normalizeSMCResponse(raw: Record<string, any>): SMCSignalOutput 
     stop_loss_y: stopLossY,
     tp1_y: tp1Y,
     tp2_y: tp2Y,
+    tp3_y: tp3Y,
     zones: normalizedZones,
     prediction_path: normalizedPath,
     ...(setupType === 'INVALID_IMAGE' ? { error: 'IMAGE_UNREADABLE' } : {}),
@@ -1243,6 +1338,7 @@ export function normalizeSMCResponse(raw: Record<string, any>): SMCSignalOutput 
       stop_loss: stopLoss,
       take_profit_1: takeProfit1,
       take_profit_2: takeProfit2,
+      take_profit_3: takeProfit3,
       risk_to_reward: riskToReward,
       invalidation_condition: invalidationCondition,
     },
@@ -1420,6 +1516,9 @@ function buildQuantitativeFallbackAnalysis(
   const takeProfit2 = isBearish
     ? roundToPrecision(entryPrice - riskDist * 3.6, decimals)
     : roundToPrecision(entryPrice + riskDist * 3.6, decimals);
+  const takeProfit3 = isBearish
+    ? roundToPrecision(entryPrice - riskDist * 5.0, decimals)
+    : roundToPrecision(entryPrice + riskDist * 5.0, decimals);
 
   const rawMock: Record<string, any> = {
     asset: quant.asset,
@@ -1469,6 +1568,7 @@ function buildQuantitativeFallbackAnalysis(
       stop_loss: stopLoss,
       take_profit_1: takeProfit1,
       take_profit_2: takeProfit2,
+      take_profit_3: takeProfit3,
       risk_to_reward: '1:2.20',
       invalidation_condition: `Sustained candle closure beyond ${stopLoss} (structural invalidation + 0.5x ATR buffer of ${halfAtr}) voids this setup.`,
     },
@@ -1586,9 +1686,6 @@ export async function analyzeChartImage(
   }
 
   if (!rawSignal) {
-    if (!geminiKey?.trim() && !openaiKey?.trim()) {
-      throw new Error('Vision analysis is not configured. Set OPENAI_API_KEY or GEMINI_API_KEY.');
-    }
     rawSignal = buildQuantitativeFallbackAnalysis(quantReport, macroNews);
   }
 

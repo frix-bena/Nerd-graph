@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { SMCSignalOutput, VisualProofZone } from '@/lib/types';
+import { SMCSignalOutput, VisualProofZone, formatSignalPrice } from '@/lib/types';
 import {
   Eye,
   EyeOff,
@@ -108,6 +108,15 @@ export default function InteractiveChartOverlay({
     signal.tp1_y ?? annotations?.tp1_y ?? annotations?.tp1_y_percent ?? 35;
   const tp2Y =
     signal.tp2_y ?? annotations?.tp2_y ?? annotations?.tp2_y_percent ?? 18;
+  const isBullish =
+    signal.trade_recommendation === 'BUY' ||
+    (signal.trade_recommendation !== 'SELL' && signal.bias !== 'BEARISH');
+  const tp3Y =
+    signal.tp3_y ??
+    annotations?.tp3_y ??
+    annotations?.tp3_y_percent ??
+    (isBullish ? Math.max(6, tp2Y - 8) : Math.min(94, tp2Y + 8));
+  const tp3Price = Number(signal.take_profit_3 ?? signal.trade_execution?.take_profit_3 ?? 0);
 
   const rawZones =
     (Array.isArray(signal.zones) && signal.zones.length > 0
@@ -136,9 +145,25 @@ export default function InteractiveChartOverlay({
   }));
 
   const priceLines = [
+    ...(tp3Price > 0
+      ? [
+          {
+            id: 'tp3',
+            label: `TP3: ${formatSignalPrice(tp3Price, signal.asset)}`,
+            yPercent: tp3Y,
+            lineClass: 'border-b-2 border-dashed border-[#0F172A]',
+            badgeClass: 'bg-[#0F172A] border-[#1D4ED8] text-white',
+            strokeColor: '#0F172A',
+            dashed: true,
+            badgeBg: '#0F172A',
+            badgeBorder: '#1D4ED8',
+            badgeText: '#FFFFFF',
+          },
+        ]
+      : []),
     {
       id: 'tp2',
-      label: `TP2: ${signal.take_profit_2.toLocaleString()}`,
+      label: `TP2: ${formatSignalPrice(signal.take_profit_2, signal.asset)}`,
       yPercent: tp2Y,
       lineClass: 'border-b-2 border-dashed border-[#1D4ED8]',
       badgeClass: 'bg-[#1D4ED8] border-[#0F172A] text-white',
@@ -150,7 +175,7 @@ export default function InteractiveChartOverlay({
     },
     {
       id: 'tp1',
-      label: `TP1: ${signal.take_profit_1.toLocaleString()}`,
+      label: `TP1: ${formatSignalPrice(signal.take_profit_1, signal.asset)}`,
       yPercent: tp1Y,
       lineClass: 'border-b-2 border-dashed border-[#2563EB]',
       badgeClass: 'bg-[#EFF6FF] border-[#1D4ED8] text-[#1D4ED8]',
@@ -162,7 +187,7 @@ export default function InteractiveChartOverlay({
     },
     {
       id: 'entry',
-      label: `ENTRY: ${signal.entry_price.toLocaleString()}`,
+      label: `ENTRY: ${formatSignalPrice(signal.entry_price, signal.asset)}`,
       yPercent: entryY,
       lineClass: 'border-b-2 border-dashed border-[#F59E0B]',
       badgeClass: 'bg-[#FEF3C7] border-[#0F172A] text-[#0F172A] font-extrabold',
@@ -175,7 +200,7 @@ export default function InteractiveChartOverlay({
     },
     {
       id: 'sl',
-      label: `SL: ${signal.stop_loss.toLocaleString()}`,
+      label: `SL: ${formatSignalPrice(signal.stop_loss, signal.asset)}`,
       yPercent: slY,
       lineClass: 'border-b-2 border-dashed border-[#EF4444]',
       badgeClass: 'bg-[#FEF2F2] border-[#EF4444] text-[#EF4444]',

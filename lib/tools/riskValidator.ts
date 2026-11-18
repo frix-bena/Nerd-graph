@@ -73,6 +73,7 @@ export function validateAndEnrichSetup(
   let stopLoss = Number(clone.stop_loss) || 0;
   let takeProfit1 = Number(clone.take_profit_1) || 0;
   let takeProfit2 = Number(clone.take_profit_2) || 0;
+  let takeProfit3 = Number(clone.take_profit_3 ?? clone.trade_execution?.take_profit_3) || 0;
 
   const adjustments = [...(clone.accuracy_verification?.adjustments_applied || [])];
 
@@ -149,7 +150,7 @@ export function validateAndEnrichSetup(
         );
       }
 
-      // Ensure TP1 and TP2 are strictly above entryPrice
+      // Ensure TP1, TP2, and TP3 are strictly above entryPrice
       const finalRisk = Math.abs(entryPrice - stopLoss);
       if (takeProfit1 <= entryPrice) {
         takeProfit1 = roundToPrecision(entryPrice + finalRisk * 2.0, decimals);
@@ -157,6 +158,12 @@ export function validateAndEnrichSetup(
       if (takeProfit2 <= takeProfit1) {
         takeProfit2 = roundToPrecision(
           Math.max(takeProfit1 + finalRisk * 1.2, entryPrice + finalRisk * 3.0),
+          decimals
+        );
+      }
+      if (takeProfit3 <= takeProfit2) {
+        takeProfit3 = roundToPrecision(
+          Math.max(takeProfit2 + finalRisk * 1.4, entryPrice + finalRisk * 4.5),
           decimals
         );
       }
@@ -187,6 +194,15 @@ export function validateAndEnrichSetup(
           Math.max(
             Math.pow(10, -decimals),
             Math.min(takeProfit1 - finalRisk * 1.2, entryPrice - finalRisk * 3.0)
+          ),
+          decimals
+        );
+      }
+      if (takeProfit3 <= 0 || takeProfit3 >= takeProfit2) {
+        takeProfit3 = roundToPrecision(
+          Math.max(
+            Math.pow(10, -decimals),
+            Math.min(takeProfit2 - finalRisk * 1.4, entryPrice - finalRisk * 4.5)
           ),
           decimals
         );
@@ -328,11 +344,41 @@ export function validateAndEnrichSetup(
   clone.stop_loss = stopLoss;
   clone.take_profit_1 = takeProfit1;
   clone.take_profit_2 = takeProfit2;
+  clone.take_profit_3 = takeProfit3;
   clone.confidence_score = adjustedConfidence;
   clone.risk_reward_ratio = formattedRR;
   clone.key_confluences = confluenceItems;
   clone.invalidation_condition = enrichedInvalidation;
   clone.analysis_summary = enrichedSummary;
+
+  const tp3Y = isBuy
+    ? Math.max(6, Math.min((clone.tp2_y || 18) - 7, clone.tp3_y || 10))
+    : Math.min(94, Math.max((clone.tp2_y || 82) + 7, clone.tp3_y || 90));
+  clone.tp3_y = tp3Y;
+
+  if (clone.visual_proof_annotations) {
+    clone.visual_proof_annotations.tp3_y = tp3Y;
+    clone.visual_proof_annotations.tp3_y_percent = tp3Y;
+  }
+
+  // Ensure zone & path labels reflect the validated prices if they previously held fallback placeholders
+  if (Array.isArray(clone.zones)) {
+    clone.zones = clone.zones.map((z) => ({
+      ...z,
+      label: z.label.replace(/\(Entry\)/g, `(${entryPrice})`),
+    }));
+  }
+  if (Array.isArray(clone.prediction_path)) {
+    clone.prediction_path = clone.prediction_path.map((pt) => ({
+      ...pt,
+      label: pt.label
+        .replace(/\(Entry\)/g, `(${entryPrice})`)
+        .replace(/\(TP\)/g, `(${takeProfit2 || takeProfit1})`),
+      note: (pt.note || pt.label)
+        .replace(/\(Entry\)/g, `(${entryPrice})`)
+        .replace(/\(TP\)/g, `(${takeProfit2 || takeProfit1})`),
+    }));
+  }
 
   clone.trade_execution = {
     ...clone.trade_execution,
@@ -340,6 +386,7 @@ export function validateAndEnrichSetup(
     stop_loss: stopLoss,
     take_profit_1: takeProfit1,
     take_profit_2: takeProfit2,
+    take_profit_3: takeProfit3,
     risk_to_reward: formattedRR,
     invalidation_condition: enrichedInvalidation,
   };
