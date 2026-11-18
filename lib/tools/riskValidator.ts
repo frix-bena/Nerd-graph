@@ -55,14 +55,16 @@ export function validateAndEnrichSetup(
   const clone: SMCSignalOutput = JSON.parse(JSON.stringify(signal));
   const decimals = getPriceDecimals(clone.entry_price, clone.asset || quant.asset);
 
-  const isBuy =
-    clone.trade_recommendation === 'BUY' ||
-    clone.trade_execution?.setup_type === 'BUY SETUP' ||
-    (clone.trade_recommendation === 'WAIT' && clone.bias === 'BULLISH');
-  const isSell =
+  const resolvedDirection =
     clone.trade_recommendation === 'SELL' ||
     clone.trade_execution?.setup_type === 'SELL SETUP' ||
-    (clone.trade_recommendation === 'WAIT' && clone.bias === 'BEARISH');
+    clone.bias === 'BEARISH' ||
+    (clone.bias === 'NEUTRAL' && quant.overallQuantBias === 'BEARISH')
+      ? 'SELL'
+      : 'BUY';
+
+  const isBuy = resolvedDirection === 'BUY';
+  const isSell = resolvedDirection === 'SELL';
   const isLineMode =
     clone.chart_type === 'LINE_OR_OVERLAID' ||
     clone.analysis_mode === 'MACRO_PRICE_ACTION';
@@ -71,6 +73,34 @@ export function validateAndEnrichSetup(
   let stopLoss = Number(clone.stop_loss) || 0;
   let takeProfit1 = Number(clone.take_profit_1) || 0;
   let takeProfit2 = Number(clone.take_profit_2) || 0;
+
+  const adjustments = [...(clone.accuracy_verification?.adjustments_applied || [])];
+
+  // Fallback to calibrated chart price or quantitative OTE/FVG price if Vision LLM returned 0 for entry_price
+  if (entryPrice <= 0) {
+    const fvg = quant.unmitigatedFVGs[quant.unmitigatedFVGs.length - 1];
+    const fallbackEntry =
+      clone.accuracy_verification?.current_market_price ||
+      (fvg
+        ? fvg.midpoint
+        : isSell
+        ? quant.fibonacci.bearishPremiumOTE.ote618
+        : quant.fibonacci.bullishDiscountOTE.ote618) ||
+      quant.currentPrice;
+    entryPrice = roundToPrecision(fallbackEntry, decimals);
+    adjustments.push(
+      `Synthesized entry_price (${entryPrice}) from institutional quantitative structure`
+    );
+  }
+
+  if (clone.trade_recommendation === 'WAIT' || clone.trade_execution?.setup_type === 'NO TRADE') {
+    clone.trade_recommendation = isSell ? 'SELL' : 'BUY';
+    clone.bias = isSell ? 'BEARISH' : 'BULLISH';
+    clone.market_bias = clone.bias;
+    if (clone.trade_execution) {
+      clone.trade_execution.setup_type = isSell ? 'SELL SETUP' : 'BUY SETUP';
+    }
+  }
 
   // Scale ATR & reference indicator levels proportionally if the screenshot Y-axis represents a historical price range different from live spot
   let effectiveAtr = quant.atr14;
@@ -98,7 +128,6 @@ export function validateAndEnrichSetup(
   );
 
   let slAdjusted = false;
-  const adjustments = [...(clone.accuracy_verification?.adjustments_applied || [])];
 
   if (entryPrice > 0 && (isBuy || isSell)) {
     const currentRiskDist = Math.abs(entryPrice - stopLoss);

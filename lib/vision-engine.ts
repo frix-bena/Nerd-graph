@@ -48,12 +48,12 @@ STAGE 2 — CRITICAL CHART ACCEPTANCE & DUAL-MODE DETECTION:
   2. LINE / OVERLAID MODE ("chart_type": "LINE_OR_OVERLAID", "analysis_mode": "MACRO_PRICE_ACTION"):
      If the uploaded image is a line chart, area chart, or multi-day overlaid daily price chart (e.g., Kitco spot charts), automatically switch to Macro Price Action & Trend Structure mode: analyze swing highs/lows, key horizontal support/resistance levels, multi-session trajectory comparisons, momentum shifts, and projected price targets.
 
-STAGE 3 — MULTI-FACTOR CONFLUENCE GATE & ANTI-HALLUCINATION ("NO TRADE" DISCIPLINE):
-- Verify that at least 3 independent structural confluences align before predicting a BUY or SELL setup:
+STAGE 3 — MULTI-FACTOR CONFLUENCE GATE & MANDATORY EXECUTION LEVELS:
+- Verify structural confluences across:
   * Confluence 1: Market Structure (confirmed Higher High / Higher Low BOS/CHoCH for Bullish; Lower High / Lower Low BOS/CHoCH for Bearish).
   * Confluence 2: Liquidity Sweep or Key Support/Resistance Reaction (SSL sweep / demand shelf defense for Bullish; BSL sweep / supply ceiling rejection for Bearish).
   * Confluence 3: Unmitigated Institutional Array (Bullish FVG / Demand OB in Discount for BUY; Bearish FVG / Supply OB in Premium for SELL; or clean horizontal flip zone on line charts).
-- If the chart is in choppy mid-range consolidation, conflicting structure, or offers a Risk-to-Reward worse than 1:1.5, DO NOT force or guess a trade. Output "setup_type": "NO TRADE", "bias": "NEUTRAL", and explain what structural boundary must break first.
+- CRITICAL MANDATE: You MUST ALWAYS provide concrete, non-zero numeric values for "entry_price", "stop_loss", "take_profit_1", and "take_profit_2" after analyzing any market screenshot. Even if the market is currently consolidating, provide the highest-probability institutional breakout or pullback Entry Price, Stop Loss, Take Profit 1, and Take Profit 2 from the chart's price axis (or from the provided live quantitative telemetry if the Y-axis is cropped). NEVER output 0, null, or "N/A" for entry_price, stop_loss, take_profit_1, or take_profit_2.
 
 STAGE 4 — STRICT DIRECTIONAL GEOMETRY & Y-COORDINATE ORDERING:
 - Remember that on image coordinates, Y = 0 is the TOP edge (HIGHEST price) and Y = 100 is the BOTTOM edge (LOWEST price).
@@ -172,11 +172,30 @@ Rules:
 4. NEVER reject line charts, area charts, or Kitco-style multi-day overlaid charts. Only return "setup_type": "INVALID_IMAGE" if the uploaded image is completely unrelated to finance/markets (e.g., a photograph of a person or object).`;
 
 function toNumericPrice(value: unknown): number {
-  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  if (typeof value === 'number' && Number.isFinite(value)) return value > 0 ? value : 0;
   if (typeof value === 'string') {
-    const cleaned = value.replace(/[^0-9.-]+/g, '');
-    const parsed = Number.parseFloat(cleaned);
-    if (Number.isFinite(parsed)) return parsed;
+    // Strip leading field labels such as "TP1:", "TP2:", "SL:", "Entry 1:" so their digits aren't parsed as prices
+    const withoutLabels = value
+      .replace(/\b(tp\s*[123]?|take\s*profit\s*[123]?|sl\s*[12]?|stop\s*loss|entry\s*[12]?)\s*[:=-]?/gi, ' ')
+      .replace(/,/g, '');
+
+    // Check for a numeric range like "2650.50 - 2654.50" or "$2650 to $2654"
+    const rangeMatch = withoutLabels.match(
+      /(\d+(?:\.\d+)?)\s*(?:-|–|—|to)\s*\$?\s*(\d+(?:\.\d+)?)/i
+    );
+    if (rangeMatch) {
+      const a = Number.parseFloat(rangeMatch[1]);
+      const b = Number.parseFloat(rangeMatch[2]);
+      if (Number.isFinite(a) && Number.isFinite(b) && a > 0 && b > 0) {
+        return Number(((a + b) / 2).toFixed(5));
+      }
+    }
+
+    const firstNumMatch = withoutLabels.match(/(\d+(?:\.\d+)?)/);
+    if (firstNumMatch) {
+      const parsed = Number.parseFloat(firstNumMatch[1]);
+      if (Number.isFinite(parsed) && parsed > 0) return parsed;
+    }
   }
   return 0;
 }
@@ -432,26 +451,24 @@ function reconcileDirectionAndPrices(params: {
   if (bullishKeywords > bearishKeywords + 1) bullVotes += 1;
   if (bearishKeywords > bullishKeywords + 1) bearVotes += 1;
 
-  if (setupType !== 'NO TRADE') {
-    if (bullVotes > bearVotes && (recommendation !== 'BUY' || bias !== 'BULLISH')) {
-      if (recommendation !== 'BUY') {
-        adjustments.push('Aligned trade_recommendation to BUY based on multi-signal consensus');
-      }
-      setupType = 'BUY SETUP';
-      recommendation = 'BUY';
-      bias = 'BULLISH';
-    } else if (bearVotes > bullVotes && (recommendation !== 'SELL' || bias !== 'BEARISH')) {
-      if (recommendation !== 'SELL') {
-        adjustments.push('Aligned trade_recommendation to SELL based on multi-signal consensus');
-      }
-      setupType = 'SELL SETUP';
-      recommendation = 'SELL';
-      bias = 'BEARISH';
+  if (bullVotes >= bearVotes && (recommendation !== 'BUY' || bias !== 'BULLISH')) {
+    if (recommendation !== 'BUY' && setupType !== 'NO TRADE') {
+      adjustments.push('Aligned trade_recommendation to BUY based on multi-signal consensus');
     }
+    setupType = 'BUY SETUP';
+    recommendation = 'BUY';
+    bias = 'BULLISH';
+  } else if (bearVotes > bullVotes && (recommendation !== 'SELL' || bias !== 'BEARISH')) {
+    if (recommendation !== 'SELL' && setupType !== 'NO TRADE') {
+      adjustments.push('Aligned trade_recommendation to SELL based on multi-signal consensus');
+    }
+    setupType = 'SELL SETUP';
+    recommendation = 'SELL';
+    bias = 'BEARISH';
   }
 
   // Enforce strict mathematical price ordering for BUY or SELL setups
-  if (entryPrice > 0 && (recommendation === 'BUY' || (recommendation === 'WAIT' && bias === 'BULLISH'))) {
+  if (entryPrice > 0 && (recommendation === 'BUY' || bias !== 'BEARISH')) {
     // Check if stop_loss and take_profit_1 were accidentally swapped
     if (stopLoss > entryPrice && takeProfit1 > 0 && takeProfit1 < entryPrice) {
       const temp = stopLoss;
@@ -728,10 +745,31 @@ export function normalizeSMCResponse(raw: Record<string, any>): SMCSignalOutput 
       ? raw.verification_calibration
       : {};
 
-  const rawEntryPrice = toNumericPrice(exec.entry_price ?? raw.entry_price);
   const rawStopLoss = toNumericPrice(exec.stop_loss ?? raw.stop_loss);
   const rawTakeProfit1 = toNumericPrice(exec.take_profit_1 ?? raw.take_profit_1);
   const rawTakeProfit2 = toNumericPrice(exec.take_profit_2 ?? raw.take_profit_2);
+  const calCurrentPrice = toNumericPrice(calibration.current_market_price ?? raw.current_market_price);
+  const calTopPrice = toNumericPrice(calibration.axis_top_price);
+  const calBottomPrice = toNumericPrice(calibration.axis_bottom_price);
+  const calMidPrice =
+    calTopPrice > 0 && calBottomPrice > 0 ? Number(((calTopPrice + calBottomPrice) / 2).toFixed(5)) : 0;
+
+  let rawEntryPrice = toNumericPrice(exec.entry_price ?? raw.entry_price);
+  if (rawEntryPrice <= 0) {
+    if (calCurrentPrice > 0) {
+      rawEntryPrice = calCurrentPrice;
+    } else if (rawStopLoss > 0 && rawTakeProfit1 > 0) {
+      rawEntryPrice = Number(((rawStopLoss + rawTakeProfit1) / 2).toFixed(5));
+    } else if (calMidPrice > 0) {
+      rawEntryPrice = calMidPrice;
+    } else {
+      rawEntryPrice =
+        toNumericPrice(tools.imbalances_and_obs) ||
+        toNumericPrice(tools.liquidity_zones) ||
+        rawTakeProfit1 ||
+        rawStopLoss;
+    }
+  }
   const hasValidPrices = rawEntryPrice > 0 || rawTakeProfit1 > 0 || rawStopLoss > 0;
 
   const rawWhatIsHappening = String(
@@ -877,24 +915,11 @@ export function normalizeSMCResponse(raw: Record<string, any>): SMCSignalOutput 
     ? Math.min(100, Math.max(0, confidenceRaw))
     : 85;
 
-  // Institutional Quality Gate: prevent forced predictions when confidence or R:R is critically low
   const confluenceCount = Number(calibration.confluence_count ?? 3);
   const confluenceGatePassed =
     (Number.isFinite(confluenceCount) ? confluenceCount >= 2 : true) &&
     calculatedRR >= 1.15 &&
-    confidenceScore >= 55;
-
-  if (
-    (setupType === 'BUY SETUP' || setupType === 'SELL SETUP') &&
-    !confluenceGatePassed &&
-    hasValidPrices
-  ) {
-    setupType = 'NO TRADE';
-    recommendation = 'WAIT';
-    adjustments.push(
-      `Filtered low-conviction signal to NO TRADE / WAIT (R:R 1:${calculatedRR.toFixed(2)}, Confidence ${confidenceScore}%)`
-    );
-  }
+    confidenceScore >= 50;
 
   const isBullish = recommendation === 'BUY' || (recommendation === 'WAIT' && bias !== 'BEARISH');
 
@@ -1265,7 +1290,7 @@ async function callGeminiVision(
       {
         parts: [
           {
-            text: `${APEX_SMC_SYSTEM_PROMPT}\n\nSelected asset: ${asset || 'Detect from chart'}. Selected timeframe: ${timeframe || 'Detect from chart'}.\n\n${toolPromptContext || ''}\n\nRemember: (1) Calibrate visible Y-axis prices first, (2) Enforce strict price and Y-coordinate ordering for BUY vs SELL, (3) Ensure stop_loss accounts for structural invalidation + 0.5x ATR buffer and risk_to_reward matches (TP1 - Entry) / (Entry - SL), (4) Output NO TRADE if structure is choppy or <3 confluences align, and (5) NEVER reject line charts, area charts, or multi-day overlaid charts (such as Kitco spot charts).`,
+            text: `${APEX_SMC_SYSTEM_PROMPT}\n\nSelected asset: ${asset || 'Detect from chart'}. Selected timeframe: ${timeframe || 'Detect from chart'}.\n\n${toolPromptContext || ''}\n\nRemember: (1) Calibrate visible Y-axis prices first, (2) ALWAYS return concrete, non-zero numeric entry_price, stop_loss, take_profit_1, and take_profit_2 levels from the screenshot (never 0 or N/A), (3) Enforce strict price and Y-coordinate ordering for BUY vs SELL, (4) Ensure stop_loss accounts for structural invalidation + 0.5x ATR buffer and risk_to_reward matches (TP1 - Entry) / (Entry - SL), and (5) NEVER reject line charts, area charts, or multi-day overlaid charts (such as Kitco spot charts).`,
           },
           {
             inline_data: {
