@@ -66,3 +66,21 @@ model ExecutionLog {
   responseMsg String?
   createdAt   DateTime @default(now())
 }
+
+model TradePrediction {
+  id              String   @id @default(cuid())
+  asset           String
+  timeframe       String
+  setupType       String
+  bias            String
+  confidenceScore Float
+  entryPrice      Float
+  stopLoss        Float
+  tp1             Float
+  tp2             Float
+  sessionName     String
+  outcome         String   @default("PENDING") // PENDING, WIN_TP1, WIN_TP2, LOSS_SL, EXPIRED
+  createdAt       DateTime @default(now())
+
+  @@index([asset, timeframe])
+}

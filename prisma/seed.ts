@@ -27,6 +27,7 @@ async function main() {
   // Clear existing sample signals to prevent duplication
   await prisma.executionLog.deleteMany({});
   await prisma.signal.deleteMany({});
+  await prisma.tradePrediction.deleteMany({});
 
   for (const sample of SAMPLE_CHARTS) {
     const analysis = sample.mockAnalysis;
@@ -49,6 +50,22 @@ async function main() {
         chartImageUrl: sample.thumbnailUrl,
         status: sample.id.includes('gold') ? 'ACTIVE' : sample.id.includes('btc') ? 'HIT_TP1' : 'ACTIVE',
         mt5Executed: true,
+      },
+    });
+
+    await prisma.tradePrediction.create({
+      data: {
+        asset: analysis.asset,
+        timeframe: analysis.timeframe,
+        setupType: analysis.trade_execution?.setup_type || 'BUY SETUP',
+        bias: analysis.bias,
+        confidenceScore: analysis.confidence_score,
+        entryPrice: analysis.entry_price,
+        stopLoss: analysis.stop_loss,
+        tp1: analysis.take_profit_1,
+        tp2: analysis.take_profit_2,
+        sessionName: 'New York Open',
+        outcome: sample.id.includes('btc') ? 'WIN_TP1' : 'WIN_TP2',
       },
     });
 

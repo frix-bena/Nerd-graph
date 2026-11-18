@@ -1,5 +1,32 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import {
+  fetchMultiTimeframeMarketData,
+  recordMT5BridgeCandles,
+} from '@/lib/tools/marketData';
+
+export async function GET(req: NextRequest) {
+  try {
+    const { searchParams } = new URL(req.url);
+    const symbol = searchParams.get('symbol') || 'XAUUSD';
+    const timeframe = searchParams.get('timeframe') || '15M';
+    const mtf = await fetchMultiTimeframeMarketData(symbol, timeframe);
+    return NextResponse.json({
+      success: true,
+      asset: mtf.asset,
+      primaryTimeframe: mtf.primaryTimeframe,
+      currentSpotPrice: mtf.currentSpotPrice,
+      source: mtf.source,
+      mt5BridgeStatus: mtf.mt5BridgeStatus,
+      timeframes: mtf.timeframes,
+    });
+  } catch (error: any) {
+    return NextResponse.json(
+      { error: 'BRIDGE_QUERY_FAILED', message: error?.message },
+      { status: 500 }
+    );
+  }
+}
 
 export async function POST(req: NextRequest) {
   try {
@@ -16,7 +43,18 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const { action, signalId, symbol, lotSize } = body;
+    const { action, signalId, symbol, lotSize, timeframe, candles } = body;
+
+    if (action === 'PUSH_OHLCV' && symbol && Array.isArray(candles)) {
+      recordMT5BridgeCandles(String(symbol), String(timeframe || '15M'), candles);
+      return NextResponse.json({
+        success: true,
+        status: 'CANDLES_CACHED',
+        symbol,
+        timeframe: timeframe || '15M',
+        count: candles.length,
+      });
+    }
 
     // If polling for pending signal trades
     if (action === 'POLL') {

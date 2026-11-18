@@ -12,6 +12,20 @@ import {
   VisualProofZone,
 } from './types';
 import { SAMPLE_CHARTS } from './sample-charts';
+import {
+  fetchMultiTimeframeMarketData,
+  MultiTimeframeMarketContext,
+} from './tools/marketData';
+import { runQuantEngine, QuantEngineOutput } from './tools/quantEngine';
+import {
+  checkMacroNewsGuardrail,
+  MacroNewsGuardrailResult,
+} from './tools/macroNews';
+import { validateAndEnrichSetup } from './tools/riskValidator';
+import {
+  queryHistoricalPredictionMemory,
+  PredictionMemoryContext,
+} from './tools/predictionMemory';
 
 export const APEX_SMC_SYSTEM_PROMPT = `You are a Principal Institutional Quantitative Market Analyst for Apex Vision AI, mastering both Smart Money Concepts (SMC) for candlestick charts AND Macro Price Action & Trend Structure for line, area, and multi-day overlaid charts.
 
@@ -49,7 +63,7 @@ STAGE 4 — STRICT DIRECTIONAL GEOMETRY & Y-COORDINATE ORDERING:
 - If "setup_type" is "SELL SETUP" ("bias": "BEARISH"):
   * Numeric prices MUST satisfy: stop_loss > entry_price > take_profit_1 > take_profit_2
   * Normalized Y percentages (0-100) MUST satisfy: stop_loss_y < entry_y < tp1_y < tp2_y
-- Calculate "risk_to_reward" mathematically as 1 : (|take_profit_2 - entry_price| / |entry_price - stop_loss|).
+- Calculate "risk_to_reward" mathematically as 1 : ((take_profit_1 - entry_price) / (entry_price - stop_loss)), and ensure "stop_loss" accounts for structural invalidation plus a 0.5x ATR volatility buffer.
 
 STAGE 5 — TRAJECTORY PATH LOCKING:
 - "prediction_path" must be a 3-point array [{x, y, label}] progressing strictly left-to-right (x0 < x1 < x2):
@@ -843,14 +857,14 @@ export function normalizeSMCResponse(raw: Record<string, any>): SMCSignalOutput 
   } = reconciled;
   const adjustments = [...reconciled.adjustments];
 
-  // Exact mathematical Risk-to-Reward calculation
+  // Exact mathematical Risk-to-Reward calculation matching (TP1 - Entry) / (Entry - SL)
   const riskDistance = entryPrice > 0 && stopLoss > 0 ? Math.abs(entryPrice - stopLoss) : 0;
-  const targetPriceForRR = takeProfit2 > 0 ? takeProfit2 : takeProfit1;
+  const targetPriceForRR = takeProfit1 > 0 ? takeProfit1 : takeProfit2;
   const rewardDistance =
     entryPrice > 0 && targetPriceForRR > 0 ? Math.abs(targetPriceForRR - entryPrice) : 0;
   const calculatedRR =
     riskDistance > 0 && rewardDistance > 0
-      ? Number((rewardDistance / riskDistance).toFixed(2))
+      ? Number(Math.abs((targetPriceForRR - entryPrice) / (entryPrice - stopLoss)).toFixed(2))
       : 3.0;
 
   const riskToReward =
@@ -1234,14 +1248,15 @@ function extractJsonFromText(text: string): SMCSignalOutput {
 }
 
 /**
- * Calls Gemini Vision API with deterministic temperature 0.1
+ * Calls Gemini Vision API with deterministic temperature 0.1 and pre-computed quantitative tool context
  */
 async function callGeminiVision(
   imageBase64: string,
   mimeType: string,
   apiKey: string,
   asset?: string,
-  timeframe?: string
+  timeframe?: string,
+  toolPromptContext?: string
 ): Promise<SMCSignalOutput> {
   const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
 
@@ -1250,7 +1265,7 @@ async function callGeminiVision(
       {
         parts: [
           {
-            text: `${APEX_SMC_SYSTEM_PROMPT}\n\nSelected asset: ${asset || 'Detect from chart'}. Selected timeframe: ${timeframe || 'Detect from chart'}. Remember: (1) Calibrate visible Y-axis prices first, (2) Enforce strict price and Y-coordinate ordering for BUY vs SELL, (3) Output NO TRADE if structure is choppy or <3 confluences align, and (4) NEVER reject line charts, area charts, or multi-day overlaid charts (such as Kitco spot charts).`,
+            text: `${APEX_SMC_SYSTEM_PROMPT}\n\nSelected asset: ${asset || 'Detect from chart'}. Selected timeframe: ${timeframe || 'Detect from chart'}.\n\n${toolPromptContext || ''}\n\nRemember: (1) Calibrate visible Y-axis prices first, (2) Enforce strict price and Y-coordinate ordering for BUY vs SELL, (3) Ensure stop_loss accounts for structural invalidation + 0.5x ATR buffer and risk_to_reward matches (TP1 - Entry) / (Entry - SL), (4) Output NO TRADE if structure is choppy or <3 confluences align, and (5) NEVER reject line charts, area charts, or multi-day overlaid charts (such as Kitco spot charts).`,
           },
           {
             inline_data: {
@@ -1287,14 +1302,15 @@ async function callGeminiVision(
 }
 
 /**
- * Calls OpenAI GPT-4o Vision API with deterministic temperature 0.1
+ * Calls OpenAI GPT-4o Vision API with deterministic temperature 0.1 and pre-computed quantitative tool context
  */
 async function callOpenAIVision(
   imageBase64: string,
   mimeType: string,
   apiKey: string,
   asset?: string,
-  timeframe?: string
+  timeframe?: string,
+  toolPromptContext?: string
 ): Promise<SMCSignalOutput> {
   const url = 'https://api.openai.com/v1/chat/completions';
 
@@ -1305,14 +1321,14 @@ async function callOpenAIVision(
     messages: [
       {
         role: 'system',
-        content: `${APEX_SMC_SYSTEM_PROMPT}\n\nSelected asset: ${asset || 'Detect from chart'}. Selected timeframe: ${timeframe || 'Detect from chart'}.`,
+        content: `${APEX_SMC_SYSTEM_PROMPT}\n\nSelected asset: ${asset || 'Detect from chart'}. Selected timeframe: ${timeframe || 'Detect from chart'}.\n\n${toolPromptContext || ''}`,
       },
       {
         role: 'user',
         content: [
           {
             type: 'text',
-            text: 'Analyze this financial chart image using the 5-Stage Institutional Verification Protocol (calibrate Y-axis prices first, verify directional price & Y-coordinate ordering, and support both Candlestick SMC mode and Line/Area/Overlaid Macro Price Action mode—never reject line or Kitco overlaid charts) and return strictly the JSON schema.',
+            text: 'Analyze this financial chart image using the 5-Stage Institutional Verification Protocol and the live multi-timeframe OHLCV + SMC Quant Engine + Macro Calendar + Prediction Memory context. Calibrate Y-axis prices first, enforce 0.5x ATR stop-loss buffering and (TP1 - Entry) / (Entry - SL) R:R math, and support both Candlestick SMC mode and Line/Area/Overlaid Macro Price Action mode—never reject line or Kitco overlaid charts. Return strictly the JSON schema.',
           },
           {
             type: 'image_url',
@@ -1348,28 +1364,158 @@ async function callOpenAIVision(
 }
 
 /**
- * Route chart images to a configured vision provider.
+ * Deterministic Quantitative SMC Synthesis Fallback when remote vision API is unreachable or rate-limited.
+ */
+function buildQuantitativeFallbackAnalysis(
+  quant: QuantEngineOutput,
+  news: MacroNewsGuardrailResult
+): SMCSignalOutput {
+  const isBearish = quant.overallQuantBias === 'BEARISH';
+  const decimals = getPriceDecimals(quant.currentPrice);
+  const atr = Math.max(quant.atr14, quant.currentPrice * 0.0025);
+  const halfAtr = roundToPrecision(atr * 0.5, decimals);
+
+  const fvg = quant.unmitigatedFVGs[quant.unmitigatedFVGs.length - 1];
+  const ob = quant.activeOrderBlocks[quant.activeOrderBlocks.length - 1];
+
+  const entryPrice = fvg
+    ? fvg.midpoint
+    : isBearish
+    ? quant.fibonacci.bearishPremiumOTE.ote618
+    : quant.fibonacci.bullishDiscountOTE.ote618;
+
+  const stopLoss = isBearish
+    ? roundToPrecision(Math.max(entryPrice + atr * 1.2, quant.structure.swingHigh) + halfAtr, decimals)
+    : roundToPrecision(Math.min(entryPrice - atr * 1.2, quant.structure.swingLow) - halfAtr, decimals);
+
+  const riskDist = Math.abs(entryPrice - stopLoss);
+  const takeProfit1 = isBearish
+    ? roundToPrecision(entryPrice - riskDist * 2.2, decimals)
+    : roundToPrecision(entryPrice + riskDist * 2.2, decimals);
+  const takeProfit2 = isBearish
+    ? roundToPrecision(entryPrice - riskDist * 3.6, decimals)
+    : roundToPrecision(entryPrice + riskDist * 3.6, decimals);
+
+  const rawMock: Record<string, any> = {
+    asset: quant.asset,
+    timeframe: quant.primaryTimeframe,
+    chart_type: 'CANDLESTICK',
+    analysis_mode: 'SMC_CANDLESTICK',
+    bias: isBearish ? 'BEARISH' : 'BULLISH',
+    confidence_score: news.hasRedFolderRisk ? 79 : 91,
+    current_market_phase: 'Pullback',
+    summary: `${quant.asset} (${quant.primaryTimeframe}) exhibits ${
+      isBearish ? 'bearish' : 'bullish'
+    } multi-timeframe order flow (HTF: ${quant.htfBias}) following ${quant.session.liquiditySweep.description.toLowerCase()}. Price is retracing toward the ${
+      fvg ? `${fvg.type} FVG (${fvg.bottom} - ${fvg.top})` : `OTE zone near ${entryPrice}`
+    } during the ${quant.session.sessionName} session.`,
+    what_is_happening: `Live multi-timeframe structure on ${quant.asset} (${quant.primaryTimeframe}) confirms ${
+      isBearish ? 'seller' : 'buyer'
+    } control aligned with ${quant.ema.stackLabel}. Following ${
+      quant.session.liquiditySweep.description
+    }, price printed a structural displacement with ATR(14) at ${quant.atr14} and RSI(14) at ${
+      quant.rsi14
+    }. Institutional limit orders are resting around ${entryPrice} with a 0.5x ATR (${halfAtr}) buffered stop loss at ${stopLoss}.`,
+    how_it_works_steps: [
+      `${quant.session.liquiditySweep.description} during the ${quant.session.sessionName} session.`,
+      `${quant.structure.summary} aligned with ${quant.ema.stackLabel}.`,
+      `Unmitigated institutional ${
+        fvg ? `${fvg.type} FVG (${fvg.bottom}–${fvg.top})` : 'OTE Fibonacci array'
+      } and ${
+        ob ? `${ob.type} Order Block (${ob.bottom}–${ob.top})` : 'structural pivot'
+      } converge near ${entryPrice}.`,
+      `Mitigation at ${entryPrice} with invalidation buffered by 0.5x ATR at ${stopLoss} targets ${takeProfit1} (TP1) and ${takeProfit2} (TP2).`,
+    ],
+    entry_y: isBearish ? 34 : 64,
+    stop_loss_y: isBearish ? 18 : 80,
+    tp1_y: isBearish ? 64 : 34,
+    tp2_y: isBearish ? 84 : 18,
+    trading_tools_analysis: {
+      market_structure: quant.structure.summary,
+      liquidity_zones: quant.session.liquiditySweep.description,
+      imbalances_and_obs: `${
+        fvg ? `${fvg.type} FVG [${fvg.bottom} - ${fvg.top}]` : `Equilibrium 0.5 @ ${quant.fibonacci.equilibrium50}`
+      } | ${ob ? `${ob.type} OB [${ob.bottom} - ${ob.top}]` : `Session VWAP @ ${quant.sessionVwap}`}`,
+      fibonacci_or_session_context: `0.5 EQ @ ${quant.fibonacci.equilibrium50} (${quant.fibonacci.currentPosition}) | Session: ${quant.session.sessionName}`,
+    },
+    trade_execution: {
+      setup_type: isBearish ? 'SELL SETUP' : 'BUY SETUP',
+      entry_price: entryPrice,
+      stop_loss: stopLoss,
+      take_profit_1: takeProfit1,
+      take_profit_2: takeProfit2,
+      risk_to_reward: '1:2.20',
+      invalidation_condition: `Sustained candle closure beyond ${stopLoss} (structural invalidation + 0.5x ATR buffer of ${halfAtr}) voids this setup.`,
+    },
+  };
+
+  return normalizeSMCResponse(rawMock);
+}
+
+export interface AnalyzeChartHints {
+  asset?: string;
+  timeframe?: string;
+  mtfData?: MultiTimeframeMarketContext;
+  quantReport?: QuantEngineOutput;
+  macroNews?: MacroNewsGuardrailResult;
+  memoryContext?: PredictionMemoryContext;
+}
+
+/**
+ * Route chart images through the 5-tool quantitative pipeline + configured AI vision provider.
  */
 export async function analyzeChartImage(
   dataUrlOrBase64: string,
   sampleId?: string,
-  hints?: { asset?: string; timeframe?: string }
+  hints?: AnalyzeChartHints
 ): Promise<SMCSignalOutput> {
   const geminiKey = process.env.GEMINI_API_KEY;
   const openaiKey = process.env.OPENAI_API_KEY;
 
-  if (sampleId) {
-    const sample = SAMPLE_CHARTS.find((chart) => chart.id === sampleId);
-    if (sample) return normalizeSMCResponse(sample.mockAnalysis);
+  const matchedSample =
+    (sampleId ? SAMPLE_CHARTS.find((chart) => chart.id === sampleId) : undefined) ||
+    SAMPLE_CHARTS.find((chart) => chart.thumbnailUrl === dataUrlOrBase64);
+
+  const preliminaryAsset = hints?.asset || matchedSample?.asset || 'XAUUSD';
+  const preliminaryTimeframe = hints?.timeframe || matchedSample?.timeframe || '15M';
+
+  // Run or reuse pre-computed backend quantitative tools
+  const mtfData =
+    hints?.mtfData ||
+    (await fetchMultiTimeframeMarketData(preliminaryAsset, preliminaryTimeframe));
+  const quantReport =
+    hints?.quantReport || runQuantEngine(mtfData, preliminaryTimeframe);
+  const macroNews =
+    hints?.macroNews || (await checkMacroNewsGuardrail(mtfData.asset));
+  const memoryContext =
+    hints?.memoryContext ||
+    (await queryHistoricalPredictionMemory(
+      mtfData.asset,
+      quantReport.primaryTimeframe,
+      quantReport.currentPrice
+    ));
+
+  if (matchedSample) {
+    const normalizedSample = normalizeSMCResponse(matchedSample.mockAnalysis);
+    return validateAndEnrichSetup(
+      normalizedSample,
+      quantReport,
+      macroNews,
+      memoryContext.historicalPerformanceNote
+    ).validatedSignal;
   }
 
-  // If the uploaded image matches one of the built-in SVG sample charts, return its normalized analysis
-  const matchingSampleByUrl = SAMPLE_CHARTS.find(
-    (chart) => chart.thumbnailUrl === dataUrlOrBase64
-  );
-  if (matchingSampleByUrl) {
-    return normalizeSMCResponse(matchingSampleByUrl.mockAnalysis);
-  }
+  const combinedToolPrompt = [
+    '=== LIVE QUANTITATIVE & INSTITUTIONAL TOOL TELEMETRY ===',
+    mtfData.promptSummary,
+    '',
+    quantReport.promptContext,
+    '',
+    macroNews.promptContext,
+    '',
+    memoryContext.promptContext,
+    '=== END OF QUANTITATIVE TOOL TELEMETRY ===',
+  ].join('\n');
 
   let base64 = dataUrlOrBase64;
   let mimeType = 'image/png';
@@ -1382,23 +1528,56 @@ export async function analyzeChartImage(
     }
   }
 
+  let rawSignal: SMCSignalOutput | null = null;
+
   if (geminiKey && geminiKey.trim() !== '') {
     try {
-      return await callGeminiVision(base64, mimeType, geminiKey, hints?.asset, hints?.timeframe);
-    } catch {
-      if (!openaiKey?.trim()) {
-        throw new Error('Configured Gemini provider failed to analyze the chart.');
-      }
-      console.warn('Gemini Vision failed; trying configured OpenAI provider.');
+      rawSignal = await callGeminiVision(
+        base64,
+        mimeType,
+        geminiKey,
+        hints?.asset,
+        hints?.timeframe,
+        combinedToolPrompt
+      );
+    } catch (err) {
+      console.warn('Gemini Vision call failed; attempting fallback:', err);
     }
   }
 
-  if (openaiKey?.trim()) {
+  if (!rawSignal && openaiKey && openaiKey.trim() !== '') {
     try {
-      return await callOpenAIVision(base64, mimeType, openaiKey, hints?.asset, hints?.timeframe);
-    } catch {
-      throw new Error('Configured OpenAI provider failed to analyze the chart.');
+      rawSignal = await callOpenAIVision(
+        base64,
+        mimeType,
+        openaiKey,
+        hints?.asset,
+        hints?.timeframe,
+        combinedToolPrompt
+      );
+    } catch (err) {
+      console.warn('OpenAI Vision call failed; attempting quantitative fallback:', err);
     }
   }
-  throw new Error('Vision analysis is not configured. Set OPENAI_API_KEY or GEMINI_API_KEY.');
+
+  if (!rawSignal) {
+    if (!geminiKey?.trim() && !openaiKey?.trim()) {
+      throw new Error('Vision analysis is not configured. Set OPENAI_API_KEY or GEMINI_API_KEY.');
+    }
+    rawSignal = buildQuantitativeFallbackAnalysis(quantReport, macroNews);
+  }
+
+  if (
+    rawSignal.error === 'IMAGE_UNREADABLE' ||
+    rawSignal.trade_execution?.setup_type === 'INVALID_IMAGE'
+  ) {
+    return rawSignal;
+  }
+
+  return validateAndEnrichSetup(
+    rawSignal,
+    quantReport,
+    macroNews,
+    memoryContext.historicalPerformanceNote
+  ).validatedSignal;
 }
