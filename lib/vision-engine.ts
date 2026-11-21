@@ -14,7 +14,13 @@ import {
 import { SAMPLE_CHARTS } from './sample-charts';
 import {
   fetchMultiTimeframeMarketData,
+  getAssetDecimals,
+  isAutoAsset,
+  isAutoTimeframe,
+  isPriceCompatibleWithAsset,
   MultiTimeframeMarketContext,
+  normalizeAssetSymbol,
+  normalizeTimeframeKey,
 } from './tools/marketData';
 import { runQuantEngine, QuantEngineOutput } from './tools/quantEngine';
 import {
@@ -29,16 +35,21 @@ import {
 
 export const APEX_SMC_SYSTEM_PROMPT = `You are a Principal Institutional Quantitative Market Analyst for Apex Vision AI, mastering both Smart Money Concepts (SMC) for candlestick charts AND Macro Price Action & Trend Structure for line, area, and multi-day overlaid charts.
 
-YOUR #1 MANDATE IS MAXIMUM PREDICTION ACCURACY AND ZERO DIRECTIONAL OR MATHEMATICAL ERRORS.
-Follow this strict 5-Stage Verification Protocol before outputting your JSON:
+YOUR #1 MANDATE IS MAXIMUM PREDICTION ACCURACY, ZERO HALLUCINATIONS, AND ZERO DIRECTIONAL OR MATHEMATICAL ERRORS.
+Follow this strict 6-Stage Verification Protocol before outputting your JSON:
 
-STAGE 1 — Y-AXIS PRICE SCALE & CURRENT PRICE CALIBRATION:
-- First, read the numerical price scale on the chart's Y-axis (right or left edge).
+STAGE 0 — EXACT MARKET & TIMEFRAME IDENTIFICATION (ANTI-HALLUCINATION PROTOCOL):
+- Inspect the uploaded image's top-left header, watermark, title bar, tab, or legend to read the exact market ticker/symbol ("detected_chart_symbol", e.g., XAUUSD, EURUSD, GBPUSD, USDJPY, GBPJPY, AUDUSD, USDCAD, NAS100, US30, SPX500, GER40, BTCUSDT, ETHUSDT, SOLUSDT, XAGUSD, USOIL, NVDA, AAPL) and timeframe ("detected_chart_timeframe", e.g., 1M, 5M, 15M, 30M, 1H, 4H, 1D, 1W).
+- If no symbol text is visible on the image (e.g., cropped screenshot), set "detected_chart_symbol": "NONE" and use the user-provided market hint.
+- If a symbol IS clearly printed on the chart image AND conflicts with the user-provided hint, trust the symbol printed on the chart image ("detected_chart_symbol") so you NEVER hallucinate the wrong market.
+
+STAGE 1 — Y-AXIS PRICE SCALE & CURRENT PRICE CALIBRATION (SINGLE SOURCE OF TRUTH):
+- Read the numerical price scale on the chart's Y-axis (right or left edge).
 - Identify:
   * "axis_top_price": highest numeric price visible near the top of the Y-axis
   * "axis_bottom_price": lowest numeric price visible near the bottom of the Y-axis
   * "current_market_price": latest active price at the right edge of the candle or spot line series
-- Every trade price ("entry_price", "stop_loss", "take_profit_1", "take_profit_2") MUST lie within or logically adjacent to the visible Y-axis scale. NEVER invent arbitrary prices disconnected from the chart's price axis.
+- ZERO HALLUCINATION RULE: Every single trade price ("entry_price", "stop_loss", "take_profit_1", "take_profit_2", "take_profit_3") and every price mentioned in "summary", "what_is_happening", "how_it_works_steps", "zones", and "trading_tools_analysis" MUST come directly from the visible Y-axis price scale of the uploaded image (between axis_bottom_price and axis_top_price). NEVER invent or recall prices from memory, from a different market, or from a different historical range when a Y-axis scale is visible on the chart.
 
 STAGE 2 — CRITICAL CHART ACCEPTANCE & DUAL-MODE DETECTION:
 - NEVER reject line charts, area charts, or multi-day overlaid spot price charts (such as Kitco multi-day spot gold/silver charts, TradingView line/area charts, or Bloomberg spot curves) due to missing candlestick wicks or bodies.
@@ -49,11 +60,14 @@ STAGE 2 — CRITICAL CHART ACCEPTANCE & DUAL-MODE DETECTION:
      If the uploaded image is a line chart, area chart, or multi-day overlaid daily price chart (e.g., Kitco spot charts), automatically switch to Macro Price Action & Trend Structure mode: analyze swing highs/lows, key horizontal support/resistance levels, multi-session trajectory comparisons, momentum shifts, and projected price targets.
 
 STAGE 3 — MULTI-FACTOR CONFLUENCE GATE & MANDATORY EXECUTION LEVELS:
+- Determine directional bias strictly from the visible price structure on the screenshot:
+  * If price is printing Higher Highs and Higher Lows, sweeping sell-side liquidity (SSL) / defending support, and displacing upward -> "bias": "BULLISH", "setup_type": "BUY SETUP".
+  * If price is printing Lower Highs and Lower Lows, sweeping buy-side liquidity (BSL) / rejecting resistance, and displacing downward -> "bias": "BEARISH", "setup_type": "SELL SETUP".
 - Verify structural confluences across:
   * Confluence 1: Market Structure (confirmed Higher High / Higher Low BOS/CHoCH for Bullish; Lower High / Lower Low BOS/CHoCH for Bearish).
   * Confluence 2: Liquidity Sweep or Key Support/Resistance Reaction (SSL sweep / demand shelf defense for Bullish; BSL sweep / supply ceiling rejection for Bearish).
   * Confluence 3: Unmitigated Institutional Array (Bullish FVG / Demand OB in Discount for BUY; Bearish FVG / Supply OB in Premium for SELL; or clean horizontal flip zone on line charts).
-- CRITICAL MANDATE: You MUST ALWAYS provide concrete, non-zero numeric values for "entry_price", "stop_loss", "take_profit_1", "take_profit_2", and "take_profit_3" after analyzing any market screenshot. Even if the market is currently consolidating, provide the highest-probability institutional breakout or pullback Entry Price, Stop Loss, Take Profit 1, Take Profit 2, and Take Profit 3 from the chart's price axis (or from the provided live quantitative telemetry if the Y-axis is cropped). NEVER output 0, null, or "N/A" for entry_price, stop_loss, take_profit_1, take_profit_2, or take_profit_3.
+- CRITICAL MANDATE: You MUST ALWAYS provide concrete, non-zero numeric values for "entry_price", "stop_loss", "take_profit_1", "take_profit_2", and "take_profit_3" anchored to the chart's visible Y-axis price scale. NEVER output 0, null, or "N/A" for entry_price, stop_loss, take_profit_1, take_profit_2, or take_profit_3.
 
 STAGE 4 — STRICT DIRECTIONAL GEOMETRY & Y-COORDINATE ORDERING:
 - Remember that on image coordinates, Y = 0 is the TOP edge (HIGHEST price) and Y = 100 is the BOTTOM edge (LOWEST price).
@@ -74,13 +88,15 @@ STAGE 5 — TRAJECTORY PATH LOCKING:
 Analyze the uploaded image and output ONLY a strictly valid JSON object matching this exact schema:
 
 {
-  "asset": "Detected or user-selected ticker (e.g., XAUUSD)",
-  "timeframe": "Detected or user-selected timeframe (e.g., 15M, 1H, Daily)",
+  "asset": "Authoritative market ticker (e.g., XAUUSD, EURUSD, USDJPY, BTCUSDT, NAS100)",
+  "timeframe": "Authoritative timeframe (e.g., 15M, 1H, 4H, 1D)",
   "chart_type": "CANDLESTICK | LINE_OR_OVERLAID",
   "analysis_mode": "SMC_CANDLESTICK | MACRO_PRICE_ACTION",
   "bias": "BULLISH | BEARISH | NEUTRAL",
   "confidence_score": 0-100,
   "verification_calibration": {
+    "detected_chart_symbol": "Exact ticker text visible on chart header/watermark, or NONE if cropped",
+    "detected_chart_timeframe": "Exact timeframe text visible on chart header, or NONE if cropped",
     "axis_top_price": 0,
     "axis_bottom_price": 0,
     "current_market_price": 0,
@@ -88,7 +104,7 @@ Analyze the uploaded image and output ONLY a strictly valid JSON object matching
     "confluence_count": 3,
     "directional_sanity_check": "Verified stop_loss < entry_price < take_profit_1 < take_profit_2 for BUY (or inverse for SELL)"
   },
-  "summary": "Concise 2-3 sentence technical executive summary of the setup and directional bias.",
+  "summary": "Concise 2-3 sentence technical executive summary of the setup and directional bias referencing actual prices visible on the chart.",
   "current_market_phase": "Accumulation | Expansion | Pullback | Consolidation",
   "what_is_happening": "A clear 3-4 sentence breakdown of the exact price movement, buyer/seller control, and key price levels visible in the uploaded screenshot.",
   "how_it_works_steps": [
@@ -108,7 +124,7 @@ Analyze the uploaded image and output ONLY a strictly valid JSON object matching
       "y_start": 0-100,
       "x_end": 0-100,
       "y_end": 0-100,
-      "label": "Bullish FVG / Demand OB / Key Support Shelf ($2,650 - $2,655)",
+      "label": "Zone label with exact price range read from the chart's Y-axis",
       "type": "FVG | OB | LIQUIDITY | BOS | SUPPORT | RESISTANCE | SUPPLY_DEMAND"
     }
   ],
@@ -129,10 +145,10 @@ Analyze the uploaded image and output ONLY a strictly valid JSON object matching
     ]
   },
   "trading_tools_analysis": {
-    "market_structure": "Exact description of swing highs/lows, BOS/CHoCH, or macro trend structure",
-    "liquidity_zones": "Specific price levels of BSL/SSL or horizontal support/resistance pools",
-    "imbalances_and_obs": "Exact price range of active FVGs/Order Blocks or key supply/demand shelves",
-    "fibonacci_or_session_context": "Premium vs. Discount positioning or multi-day overlaid session trajectory comparison"
+    "market_structure": "Exact description of swing highs/lows, BOS/CHoCH, or macro trend structure with visible chart prices",
+    "liquidity_zones": "Specific price levels of BSL/SSL or horizontal support/resistance pools visible on the Y-axis",
+    "imbalances_and_obs": "Exact price range of active FVGs/Order Blocks or key supply/demand shelves visible on the Y-axis",
+    "fibonacci_or_session_context": "Premium vs. Discount positioning within the chart's visible dealing range or multi-day overlaid session trajectory"
   },
   "trade_execution": {
     "setup_type": "BUY SETUP | SELL SETUP",
@@ -169,7 +185,7 @@ Analyze the uploaded image and output ONLY a strictly valid JSON object matching
 }
 
 Rules:
-1. Read the price scale on the chart's Y-axis (left or right) so entry_price, stop_loss, take_profit_1, and take_profit_2 match actual chart prices—never invent arbitrary prices disconnected from the axis.
+1. Read the price scale on the chart's Y-axis (left or right) so entry_price, stop_loss, take_profit_1, take_profit_2, and take_profit_3 match actual chart prices—never invent arbitrary prices disconnected from the axis.
 2. All Y coordinates (entry_y, stop_loss_y, tp1_y, tp2_y, y_start, y_end, prediction_path.y) are normalized percentages from 0 (top edge of image) to 100 (bottom edge of image), aligned vertically with those price levels on the screenshot.
 3. Always provide a 3-point prediction_path array [{x, y, label}] showing (1) current price position on the chart, (2) entry/retest inflection point at entry_y, and (3) projected target expansion at tp2_y.
 4. NEVER reject line charts, area charts, or Kitco-style multi-day overlaid charts. Only return "setup_type": "INVALID_IMAGE" if the uploaded image is completely unrelated to finance/markets (e.g., a photograph of a person or object).`;
@@ -177,12 +193,10 @@ Rules:
 function toNumericPrice(value: unknown): number {
   if (typeof value === 'number' && Number.isFinite(value)) return value > 0 ? value : 0;
   if (typeof value === 'string') {
-    // Strip leading field labels such as "TP1:", "TP2:", "SL:", "Entry 1:" so their digits aren't parsed as prices
     const withoutLabels = value
       .replace(/\b(tp\s*[123]?|take\s*profit\s*[123]?|sl\s*[12]?|stop\s*loss|entry\s*[12]?)\s*[:=-]?/gi, ' ')
       .replace(/,/g, '');
 
-    // Check for a numeric range like "2650.50 - 2654.50" or "$2650 to $2654"
     const rangeMatch = withoutLabels.match(
       /(\d+(?:\.\d+)?)\s*(?:-|–|—|to)\s*\$?\s*(\d+(?:\.\d+)?)/i
     );
@@ -190,7 +204,7 @@ function toNumericPrice(value: unknown): number {
       const a = Number.parseFloat(rangeMatch[1]);
       const b = Number.parseFloat(rangeMatch[2]);
       if (Number.isFinite(a) && Number.isFinite(b) && a > 0 && b > 0) {
-        return Number(((a + b) / 2).toFixed(5));
+        return Number(((a + b) / 2).toFixed(6));
       }
     }
 
@@ -203,12 +217,15 @@ function toNumericPrice(value: unknown): number {
   return 0;
 }
 
-function getPriceDecimals(price: number): number {
-  if (!Number.isFinite(price) || price <= 0) return 2;
+function getPriceDecimals(price: number, asset?: string): number {
+  const assetDecimals = asset ? getAssetDecimals(asset, price) : 2;
+  if (!Number.isFinite(price) || price <= 0) return assetDecimals;
   const str = String(price);
   if (str.includes('.')) {
-    return Math.min(5, Math.max(1, str.split('.')[1].length));
+    const observed = Math.min(6, Math.max(1, str.split('.')[1].length));
+    return Math.max(assetDecimals, observed);
   }
+  if (asset) return assetDecimals;
   if (price < 10) return 4;
   if (price < 1000) return 2;
   return 1;
@@ -218,7 +235,14 @@ export function formatSignalPrice(value: unknown, asset?: string): string {
   const num = typeof value === 'number' ? value : toNumericPrice(value);
   if (!Number.isFinite(num) || num <= 0) return '—';
   const upperAsset = String(asset || '').toUpperCase();
-  if (upperAsset.includes('EUR') || upperAsset.includes('GBP') || upperAsset.includes('AUD') || upperAsset.includes('NZD') || upperAsset.includes('CAD') || upperAsset.includes('CHF')) {
+  if (
+    upperAsset.includes('EUR') ||
+    upperAsset.includes('GBP') ||
+    upperAsset.includes('AUD') ||
+    upperAsset.includes('NZD') ||
+    upperAsset.includes('CAD') ||
+    upperAsset.includes('CHF')
+  ) {
     if (!upperAsset.includes('JPY') && num < 20) {
       return num.toLocaleString('en-US', {
         minimumFractionDigits: 4,
@@ -236,6 +260,18 @@ export function formatSignalPrice(value: unknown, asset?: string): string {
     return num.toLocaleString('en-US', {
       minimumFractionDigits: 2,
       maximumFractionDigits: 2,
+    });
+  }
+  if (upperAsset.includes('XAG') || upperAsset.includes('SILVER')) {
+    return num.toLocaleString('en-US', {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 3,
+    });
+  }
+  if (num < 0.01) {
+    return num.toLocaleString('en-US', {
+      minimumFractionDigits: 6,
+      maximumFractionDigits: 7,
     });
   }
   if (num < 1) {
@@ -376,7 +412,6 @@ function normalizeSetupType(
   const upper = String(rawSetup || rawRec || '').toUpperCase().trim();
   const lowerExplanation = String(explanationText || '').toLowerCase();
 
-  // Guard: never allow a line chart or overlaid chart to be rejected as INVALID_IMAGE
   const rejectedForLineChart =
     lowerExplanation.includes('line chart') ||
     lowerExplanation.includes('candlestick') ||
@@ -398,10 +433,98 @@ function normalizeSetupType(
 }
 
 /**
+ * Reconciles user-provided market/timeframe hints against the chart's visible ticker header
+ * and Y-axis price scale so the agent never hallucinates the wrong market on a user's chart.
+ */
+export function resolveAccurateMarketAndTimeframe(params: {
+  userAsset?: string;
+  userTimeframe?: string;
+  detectedChartSymbol?: string;
+  detectedChartTimeframe?: string;
+  modelAsset?: string;
+  modelTimeframe?: string;
+  referencePrice?: number;
+  adjustments?: string[];
+}): { resolvedAsset: string; resolvedTimeframe: string } {
+  const {
+    userAsset,
+    userTimeframe,
+    detectedChartSymbol,
+    detectedChartTimeframe,
+    modelAsset,
+    modelTimeframe,
+    referencePrice = 0,
+    adjustments,
+  } = params;
+
+  const hasExplicitUserAsset = !isAutoAsset(userAsset);
+  const hasExplicitDetectedSymbol = !isAutoAsset(detectedChartSymbol);
+  const hasExplicitModelAsset = !isAutoAsset(modelAsset);
+
+  const normalizedUserAsset = hasExplicitUserAsset
+    ? normalizeAssetSymbol(userAsset)
+    : '';
+  const normalizedDetectedSymbol = hasExplicitDetectedSymbol
+    ? normalizeAssetSymbol(detectedChartSymbol)
+    : '';
+  const normalizedModelAsset = hasExplicitModelAsset
+    ? normalizeAssetSymbol(modelAsset)
+    : '';
+
+  let resolvedAsset = 'XAUUSD';
+
+  if (!hasExplicitUserAsset) {
+    // Auto-detect mode: prioritize ticker explicitly read from chart header, then model asset
+    if (normalizedDetectedSymbol && (!referencePrice || isPriceCompatibleWithAsset(referencePrice, normalizedDetectedSymbol))) {
+      resolvedAsset = normalizedDetectedSymbol;
+    } else if (normalizedModelAsset && (!referencePrice || isPriceCompatibleWithAsset(referencePrice, normalizedModelAsset))) {
+      resolvedAsset = normalizedModelAsset;
+    } else if (normalizedDetectedSymbol) {
+      resolvedAsset = normalizedDetectedSymbol;
+    } else if (normalizedModelAsset) {
+      resolvedAsset = normalizedModelAsset;
+    }
+  } else {
+    // User provided an asset: verify it doesn't conflict with an explicit ticker printed on the chart + Y-axis price domain
+    const userAssetMatchesPrice =
+      referencePrice <= 0 || isPriceCompatibleWithAsset(referencePrice, normalizedUserAsset);
+    const chartCandidate = normalizedDetectedSymbol || normalizedModelAsset;
+    const chartCandidateDiffers =
+      Boolean(chartCandidate) && chartCandidate !== normalizedUserAsset;
+    const chartCandidateMatchesPrice =
+      Boolean(chartCandidate) &&
+      referencePrice > 0 &&
+      isPriceCompatibleWithAsset(referencePrice, chartCandidate);
+
+    if (chartCandidateDiffers && !userAssetMatchesPrice && chartCandidateMatchesPrice) {
+      resolvedAsset = chartCandidate;
+      adjustments?.push(
+        `Aligned market symbol from ${normalizedUserAsset} to ${chartCandidate} to match visible chart header and Y-axis price scale (${referencePrice})`
+      );
+    } else {
+      resolvedAsset = normalizedUserAsset;
+    }
+  }
+
+  let resolvedTimeframe = '15M';
+  if (!isAutoTimeframe(userTimeframe)) {
+    resolvedTimeframe = normalizeTimeframeKey(userTimeframe);
+  } else if (!isAutoTimeframe(detectedChartTimeframe)) {
+    resolvedTimeframe = normalizeTimeframeKey(detectedChartTimeframe);
+  } else if (!isAutoTimeframe(modelTimeframe)) {
+    resolvedTimeframe = normalizeTimeframeKey(modelTimeframe);
+  }
+
+  return { resolvedAsset, resolvedTimeframe };
+}
+
+/**
  * Reconciles directional consensus across setup_type, bias, text narrative, and price geometry,
- * and enforces strict mathematical ordering of entry_price, stop_loss, take_profit_1, and take_profit_2.
+ * and enforces strict mathematical ordering of entry_price, stop_loss, take_profit_1, and take_profit_2
+ * within the chart's visible Y-axis price domain.
  */
 function reconcileDirectionAndPrices(params: {
+  asset: string;
   initialSetupType: SetupType;
   initialRecommendation: TradeRecommendation;
   initialBias: MarketBias;
@@ -410,6 +533,9 @@ function reconcileDirectionAndPrices(params: {
   stopLoss: number;
   takeProfit1: number;
   takeProfit2: number;
+  axisTopPrice?: number;
+  axisBottomPrice?: number;
+  currentMarketPrice?: number;
   narrativeText: string;
 }): {
   setupType: SetupType;
@@ -432,6 +558,7 @@ function reconcileDirectionAndPrices(params: {
     takeProfit1,
     takeProfit2,
   } = params;
+  const { asset, axisTopPrice = 0, axisBottomPrice = 0, currentMarketPrice = 0 } = params;
 
   if (setupType === 'INVALID_IMAGE') {
     return {
@@ -447,7 +574,38 @@ function reconcileDirectionAndPrices(params: {
     };
   }
 
-  const decimals = getPriceDecimals(entryPrice || takeProfit1 || stopLoss);
+  const hasValidAxis = axisTopPrice > axisBottomPrice && axisBottomPrice > 0;
+  const axisSpan = hasValidAxis ? axisTopPrice - axisBottomPrice : 0;
+  const axisMid = hasValidAxis ? (axisTopPrice + axisBottomPrice) / 2 : 0;
+
+  const decimals = getPriceDecimals(
+    entryPrice || currentMarketPrice || axisMid || takeProfit1 || stopLoss,
+    asset
+  );
+
+  // Anchor entryPrice to the chart's visible Y-axis domain if it drifted outside the screenshot's Y-axis scale
+  if (hasValidAxis && entryPrice > 0) {
+    entryPrice = repairPriceScaleOutlier(
+      entryPrice,
+      currentMarketPrice > 0 ? currentMarketPrice : axisMid,
+      decimals,
+      adjustments,
+      'entry_price'
+    );
+    if (
+      entryPrice < axisBottomPrice - axisSpan * 0.25 ||
+      entryPrice > axisTopPrice + axisSpan * 0.25
+    ) {
+      const anchor =
+        currentMarketPrice >= axisBottomPrice && currentMarketPrice <= axisTopPrice
+          ? currentMarketPrice
+          : roundToPrecision(axisMid, decimals);
+      adjustments.push(
+        `Anchored entry_price (${entryPrice} -> ${anchor}) to visible Y-axis scale [${axisBottomPrice} - ${axisTopPrice}]`
+      );
+      entryPrice = anchor;
+    }
+  }
 
   if (entryPrice > 0) {
     stopLoss = repairPriceScaleOutlier(stopLoss, entryPrice, decimals, adjustments, 'stop_loss');
@@ -465,6 +623,19 @@ function reconcileDirectionAndPrices(params: {
       adjustments,
       'take_profit_2'
     );
+  }
+
+  // Clamp stopLoss, takeProfit1, takeProfit2 if any of them hallucinated wildly outside the visible Y-axis span
+  if (hasValidAxis && entryPrice > 0) {
+    if (stopLoss > 0 && Math.abs(stopLoss - entryPrice) > axisSpan * 0.85) {
+      stopLoss = 0; // trigger proportional recalculation from axisSpan below
+    }
+    if (takeProfit1 > 0 && Math.abs(takeProfit1 - entryPrice) > axisSpan * 1.1) {
+      takeProfit1 = 0;
+    }
+    if (takeProfit2 > 0 && Math.abs(takeProfit2 - entryPrice) > axisSpan * 1.6) {
+      takeProfit2 = 0;
+    }
   }
 
   const hasAllPrices = entryPrice > 0 && stopLoss > 0 && takeProfit1 > 0;
@@ -488,7 +659,6 @@ function reconcileDirectionAndPrices(params: {
     (lowerNarrative.match(/\b(bearish|downtrend|lower low|supply|sell|short|markdown)\b/g) || [])
       .length;
 
-  // Vote across all available signals to prevent contradictory direction labels
   let bullVotes = 0;
   let bearVotes = 0;
   if (recommendation === 'BUY') bullVotes += 2;
@@ -518,9 +688,15 @@ function reconcileDirectionAndPrices(params: {
     bias = 'BEARISH';
   }
 
+  const defaultDelta = roundToPrecision(
+    hasValidAxis
+      ? Math.max(axisSpan * 0.22, Math.pow(10, -decimals) * 6)
+      : Math.max(entryPrice * 0.005, Math.pow(10, -decimals) * 10),
+    decimals
+  );
+
   // Enforce strict mathematical price ordering for BUY or SELL setups
   if (entryPrice > 0 && (recommendation === 'BUY' || bias !== 'BEARISH')) {
-    // Check if stop_loss and take_profit_1 were accidentally swapped
     if (stopLoss > entryPrice && takeProfit1 > 0 && takeProfit1 < entryPrice) {
       const temp = stopLoss;
       stopLoss = takeProfit1;
@@ -528,15 +704,14 @@ function reconcileDirectionAndPrices(params: {
       adjustments.push('Swapped inverted stop_loss and take_profit_1 for BUY setup');
     }
 
-    // Ensure TP1 and TP2 are both above entryPrice
-    const defaultDelta = roundToPrecision(Math.max(entryPrice * 0.006, Math.pow(10, -decimals) * 10), decimals);
     if (takeProfit1 <= entryPrice) {
-      const dist = stopLoss > 0 && stopLoss < entryPrice ? (entryPrice - stopLoss) * 2.0 : defaultDelta;
+      const dist =
+        stopLoss > 0 && stopLoss < entryPrice ? (entryPrice - stopLoss) * 2.0 : defaultDelta;
       takeProfit1 = roundToPrecision(entryPrice + dist, decimals);
       adjustments.push(`Adjusted take_profit_1 above entry_price (${takeProfit1})`);
     }
     if (takeProfit2 <= entryPrice) {
-      const dist = Math.abs(takeProfit1 - entryPrice) * 1.8;
+      const dist = Math.abs(takeProfit1 - entryPrice) * 1.75;
       takeProfit2 = roundToPrecision(entryPrice + dist, decimals);
       adjustments.push(`Adjusted take_profit_2 above take_profit_1 (${takeProfit2})`);
     }
@@ -548,23 +723,26 @@ function reconcileDirectionAndPrices(params: {
     }
     if (takeProfit2 === takeProfit1) {
       takeProfit2 = roundToPrecision(
-        takeProfit1 + Math.max( (takeProfit1 - entryPrice) * 0.6, Math.pow(10, -decimals) * 5 ),
+        takeProfit1 + Math.max((takeProfit1 - entryPrice) * 0.6, Math.pow(10, -decimals) * 5),
         decimals
       );
     }
 
-    // Ensure stopLoss is strictly below entryPrice
     if (stopLoss <= 0 || stopLoss >= entryPrice) {
       const reward1 = Math.abs(takeProfit1 - entryPrice);
-      const riskDist = reward1 > 0 ? reward1 / 2.0 : defaultDelta * 0.5;
-      stopLoss = roundToPrecision(entryPrice - Math.max(riskDist, Math.pow(10, -decimals) * 2), decimals);
-      adjustments.push(`Placed stop_loss below entry_price at structural invalidation (${stopLoss})`);
+      const riskDist = reward1 > 0 ? reward1 / 2.2 : defaultDelta * 0.45;
+      stopLoss = roundToPrecision(
+        entryPrice - Math.max(riskDist, Math.pow(10, -decimals) * 2),
+        decimals
+      );
+      adjustments.push(
+        `Placed stop_loss below entry_price at structural invalidation (${stopLoss})`
+      );
     }
   } else if (
     entryPrice > 0 &&
     (recommendation === 'SELL' || (recommendation === 'WAIT' && bias === 'BEARISH'))
   ) {
-    // Check if stop_loss and take_profit_1 were accidentally swapped
     if (stopLoss > 0 && stopLoss < entryPrice && takeProfit1 > entryPrice) {
       const temp = stopLoss;
       stopLoss = takeProfit1;
@@ -572,15 +750,20 @@ function reconcileDirectionAndPrices(params: {
       adjustments.push('Swapped inverted stop_loss and take_profit_1 for SELL setup');
     }
 
-    const defaultDelta = roundToPrecision(Math.max(entryPrice * 0.006, Math.pow(10, -decimals) * 10), decimals);
     if (takeProfit1 <= 0 || takeProfit1 >= entryPrice) {
       const dist = stopLoss > entryPrice ? (stopLoss - entryPrice) * 2.0 : defaultDelta;
-      takeProfit1 = roundToPrecision(Math.max(Math.pow(10, -decimals), entryPrice - dist), decimals);
+      takeProfit1 = roundToPrecision(
+        Math.max(Math.pow(10, -decimals), entryPrice - dist),
+        decimals
+      );
       adjustments.push(`Adjusted take_profit_1 below entry_price (${takeProfit1})`);
     }
     if (takeProfit2 <= 0 || takeProfit2 >= entryPrice) {
-      const dist = Math.abs(entryPrice - takeProfit1) * 1.8;
-      takeProfit2 = roundToPrecision(Math.max(Math.pow(10, -decimals), entryPrice - dist), decimals);
+      const dist = Math.abs(entryPrice - takeProfit1) * 1.75;
+      takeProfit2 = roundToPrecision(
+        Math.max(Math.pow(10, -decimals), entryPrice - dist),
+        decimals
+      );
       adjustments.push(`Adjusted take_profit_2 below take_profit_1 (${takeProfit2})`);
     }
     if (takeProfit1 < takeProfit2) {
@@ -599,12 +782,16 @@ function reconcileDirectionAndPrices(params: {
       );
     }
 
-    // Ensure stopLoss is strictly above entryPrice
     if (stopLoss <= entryPrice) {
       const reward1 = Math.abs(entryPrice - takeProfit1);
-      const riskDist = reward1 > 0 ? reward1 / 2.0 : defaultDelta * 0.5;
-      stopLoss = roundToPrecision(entryPrice + Math.max(riskDist, Math.pow(10, -decimals) * 2), decimals);
-      adjustments.push(`Placed stop_loss above entry_price at structural invalidation (${stopLoss})`);
+      const riskDist = reward1 > 0 ? reward1 / 2.2 : defaultDelta * 0.45;
+      stopLoss = roundToPrecision(
+        entryPrice + Math.max(riskDist, Math.pow(10, -decimals) * 2),
+        decimals
+      );
+      adjustments.push(
+        `Placed stop_loss above entry_price at structural invalidation (${stopLoss})`
+      );
     }
   }
 
@@ -691,7 +878,6 @@ function calibrateAndOrderYCoordinates(params: {
     };
   }
 
-  // If raw Y coordinates are out of order, try proportional mapping from price levels first
   const allPrices = [entryPrice, stopLoss, takeProfit1, takeProfit2].filter((p) => p > 0);
   if (allPrices.length === 4) {
     const maxPrice = Math.max(...allPrices);
@@ -718,7 +904,6 @@ function calibrateAndOrderYCoordinates(params: {
         let tp1Y = priceToY(takeProfit1);
         let tp2Y = priceToY(takeProfit2);
 
-        // Ensure minimum 6% vertical separation so labels never overlap
         if (isBullish) {
           tp2Y = Math.min(tp2Y, 22);
           tp1Y = Math.max(tp2Y + 8, Math.min(tp1Y, 46));
@@ -745,12 +930,10 @@ function calibrateAndOrderYCoordinates(params: {
     }
   }
 
-  // Fallback deterministic monotonic sorting of the 4 Y-values
   const sortedY = [rawEntryY, rawStopLossY, rawTp1Y, rawTp2Y]
     .map((v) => clampPercent(v, 50))
     .sort((a, b) => a - b);
 
-  // Enforce minimum 8% spacing across the 4 sorted levels
   for (let i = 1; i < sortedY.length; i++) {
     if (sortedY[i] < sortedY[i - 1] + 8) {
       sortedY[i] = Math.min(92, sortedY[i - 1] + 8);
@@ -776,7 +959,10 @@ function calibrateAndOrderYCoordinates(params: {
   };
 }
 
-export function normalizeSMCResponse(raw: Record<string, any>): SMCSignalOutput {
+export function normalizeSMCResponse(
+  raw: Record<string, any>,
+  userHints?: { asset?: string; timeframe?: string }
+): SMCSignalOutput {
   const exec =
     raw.trade_execution && typeof raw.trade_execution === 'object' ? raw.trade_execution : {};
   const mechanics =
@@ -806,18 +992,24 @@ export function normalizeSMCResponse(raw: Record<string, any>): SMCSignalOutput 
   const rawTakeProfit3 = toNumericPrice(
     exec.take_profit_3 ?? raw.take_profit_3 ?? exec.tp3 ?? raw.tp3 ?? exec.take_profits?.[2]
   );
-  const calCurrentPrice = toNumericPrice(calibration.current_market_price ?? raw.current_market_price);
+  const calCurrentPrice = toNumericPrice(
+    calibration.current_market_price ?? raw.current_market_price
+  );
   const calTopPrice = toNumericPrice(calibration.axis_top_price);
   const calBottomPrice = toNumericPrice(calibration.axis_bottom_price);
   const calMidPrice =
-    calTopPrice > 0 && calBottomPrice > 0 ? Number(((calTopPrice + calBottomPrice) / 2).toFixed(5)) : 0;
+    calTopPrice > 0 && calBottomPrice > 0
+      ? Number(((calTopPrice + calBottomPrice) / 2).toFixed(6))
+      : 0;
 
-  let rawEntryPrice = toNumericPrice(exec.entry_price ?? raw.entry_price ?? exec.entry ?? raw.entry);
+  let rawEntryPrice = toNumericPrice(
+    exec.entry_price ?? raw.entry_price ?? exec.entry ?? raw.entry
+  );
   if (rawEntryPrice <= 0) {
     if (calCurrentPrice > 0) {
       rawEntryPrice = calCurrentPrice;
     } else if (rawStopLoss > 0 && rawTakeProfit1 > 0) {
-      rawEntryPrice = Number(((rawStopLoss + rawTakeProfit1) / 2).toFixed(5));
+      rawEntryPrice = Number(((rawStopLoss + rawTakeProfit1) / 2).toFixed(6));
     } else if (calMidPrice > 0) {
       rawEntryPrice = calMidPrice;
     } else {
@@ -838,7 +1030,6 @@ export function normalizeSMCResponse(raw: Record<string, any>): SMCSignalOutput 
       ''
   );
 
-  // Only return IMAGE_UNREADABLE if explicitly flagged and not a line/overlaid chart rejection
   const lowerMsg = rawWhatIsHappening.toLowerCase();
   const isLineChartRejection =
     lowerMsg.includes('line chart') ||
@@ -912,6 +1103,25 @@ export function normalizeSMCResponse(raw: Record<string, any>): SMCSignalOutput 
     };
   }
 
+  const preAdjustments: string[] = [];
+  const sampleRefPrice = calCurrentPrice || rawEntryPrice || calMidPrice;
+  const { resolvedAsset, resolvedTimeframe } = resolveAccurateMarketAndTimeframe({
+    userAsset: userHints?.asset,
+    userTimeframe: userHints?.timeframe,
+    detectedChartSymbol:
+      typeof calibration.detected_chart_symbol === 'string'
+        ? calibration.detected_chart_symbol
+        : undefined,
+    detectedChartTimeframe:
+      typeof calibration.detected_chart_timeframe === 'string'
+        ? calibration.detected_chart_timeframe
+        : undefined,
+    modelAsset: typeof raw.asset === 'string' ? raw.asset : undefined,
+    modelTimeframe: typeof raw.timeframe === 'string' ? raw.timeframe : undefined,
+    referencePrice: sampleRefPrice,
+    adjustments: preAdjustments,
+  });
+
   const { chartType, analysisMode } = normalizeChartMode(raw);
   const initialSetup = normalizeSetupType(
     exec.setup_type ?? raw.setup_type,
@@ -929,8 +1139,8 @@ export function normalizeSMCResponse(raw: Record<string, any>): SMCSignalOutput 
         : 'NEUTRAL')
   );
 
-  // Reconcile direction & enforce strict mathematical price ordering
   const reconciled = reconcileDirectionAndPrices({
+    asset: resolvedAsset,
     initialSetupType: initialSetup.setupType,
     initialRecommendation: initialSetup.recommendation,
     initialBias,
@@ -939,7 +1149,12 @@ export function normalizeSMCResponse(raw: Record<string, any>): SMCSignalOutput 
     stopLoss: rawStopLoss,
     takeProfit1: rawTakeProfit1,
     takeProfit2: rawTakeProfit2,
-    narrativeText: `${rawWhatIsHappening} ${String(raw.summary || '')} ${String(tools.market_structure || '')}`,
+    axisTopPrice: calTopPrice > 0 ? calTopPrice : undefined,
+    axisBottomPrice: calBottomPrice > 0 ? calBottomPrice : undefined,
+    currentMarketPrice: calCurrentPrice > 0 ? calCurrentPrice : undefined,
+    narrativeText: `${rawWhatIsHappening} ${String(raw.summary || '')} ${String(
+      tools.market_structure || ''
+    )}`,
   });
 
   let {
@@ -951,9 +1166,12 @@ export function normalizeSMCResponse(raw: Record<string, any>): SMCSignalOutput 
     takeProfit1,
     takeProfit2,
   } = reconciled;
-  const adjustments = [...reconciled.adjustments];
+  const adjustments = [...preAdjustments, ...reconciled.adjustments];
 
-  const decimalsForTp3 = getPriceDecimals(entryPrice || takeProfit2 || takeProfit1 || stopLoss);
+  const decimalsForTp3 = getPriceDecimals(
+    entryPrice || takeProfit2 || takeProfit1 || stopLoss,
+    resolvedAsset
+  );
   const isBullishSetup =
     recommendation === 'BUY' || (recommendation === 'WAIT' && bias !== 'BEARISH');
   let takeProfit3 =
@@ -983,7 +1201,6 @@ export function normalizeSMCResponse(raw: Record<string, any>): SMCSignalOutput 
     }
   }
 
-  // Exact mathematical Risk-to-Reward calculation matching (TP1 - Entry) / (Entry - SL)
   const riskDistance = entryPrice > 0 && stopLoss > 0 ? Math.abs(entryPrice - stopLoss) : 0;
   const targetPriceForRR = takeProfit1 > 0 ? takeProfit1 : takeProfit2;
   const rewardDistance =
@@ -1027,8 +1244,8 @@ export function normalizeSMCResponse(raw: Record<string, any>): SMCSignalOutput 
   const whatIsHappening =
     rawWhatIsHappening ||
     (analysisMode === 'MACRO_PRICE_ACTION'
-      ? 'Macro price action shows a clear directional trajectory across sessions with buyers defending horizontal support shelves and building momentum toward upper resistance targets.'
-      : 'Institutional order flow shows a liquidity sweep followed by impulsive displacement and a structural break, with price retracing into an unmitigated Fair Value Gap and Order Block.');
+      ? `Macro price action on ${resolvedAsset} (${resolvedTimeframe}) shows a clear directional trajectory across sessions with participants defending horizontal structural levels around ${entryPrice}.`
+      : `Institutional order flow on ${resolvedAsset} (${resolvedTimeframe}) shows a liquidity reaction followed by displacement and a structural break, with price retracing into an unmitigated Fair Value Gap and Order Block near ${entryPrice}.`);
 
   const analysisSummary = String(raw.summary ?? raw.analysis_summary ?? whatIsHappening);
 
@@ -1047,8 +1264,8 @@ export function normalizeSMCResponse(raw: Record<string, any>): SMCSignalOutput 
   const marketStructure = String(
     tools.market_structure ??
       (analysisMode === 'MACRO_PRICE_ACTION'
-        ? 'Macro swing highs and swing lows aligned with multi-session trend structure'
-        : 'Institutional BOS / CHoCH displacement detected')
+        ? `Macro swing highs and swing lows on ${resolvedAsset} (${resolvedTimeframe}) aligned with multi-session trend structure`
+        : `Institutional BOS / CHoCH displacement detected on ${resolvedAsset} (${resolvedTimeframe})`)
   );
   const liquidityZones = String(
     tools.liquidity_zones ??
@@ -1073,7 +1290,7 @@ export function normalizeSMCResponse(raw: Record<string, any>): SMCSignalOutput 
     ? rawStepsSource.map((s: unknown) => String(s))
     : [
         `Price reacted at the key structural level (${liquidityZones}), where institutional participants absorbed opposing order flow.`,
-        `Momentum shifted decisively via ${marketStructure}, confirming ${bias.toLowerCase()} control on the ${String(raw.timeframe || '15M')} chart.`,
+        `Momentum shifted decisively via ${marketStructure}, confirming ${bias.toLowerCase()} control on the ${resolvedTimeframe} chart.`,
         `Resting limit orders and structural confluence are concentrated around ${imbalancesAndObs} near ${entryPrice || 'the entry zone'}.`,
         `A sustained hold beyond invalidation (${stopLoss || 'stop loss'}) triggers continuation toward ${takeProfit1 || 'TP1'} and ${takeProfit2 || 'TP2'}.`,
       ];
@@ -1105,9 +1322,9 @@ export function normalizeSMCResponse(raw: Record<string, any>): SMCSignalOutput 
     isBullish ? 18 : 82
   );
 
-  const axisTopPrice = toNumericPrice(calibration.axis_top_price);
-  const axisBottomPrice = toNumericPrice(calibration.axis_bottom_price);
-  const currentMarketPrice = toNumericPrice(calibration.current_market_price);
+  const axisTopPrice = calTopPrice;
+  const axisBottomPrice = calBottomPrice;
+  const currentMarketPrice = calCurrentPrice;
 
   const calibratedY = calibrateAndOrderYCoordinates({
     isBullish,
@@ -1191,7 +1408,6 @@ export function normalizeSMCResponse(raw: Record<string, any>): SMCSignalOutput 
             idx === 0 ? Math.round((entryY + tp1Y) / 2) : idx === 1 ? entryY : tp2Y;
           const rawX = clampPercent(pt?.x ?? pt?.x_percent, defaultX);
           const rawY = clampPercent(pt?.y ?? pt?.y_percent, defaultY);
-          // Lock Entry Retest (idx===1) to entryY and final target node to tp2Y if rawY drifted by > 6%
           const lockedY =
             idx === 1 && Math.abs(rawY - entryY) > 6
               ? entryY
@@ -1239,7 +1455,6 @@ export function normalizeSMCResponse(raw: Record<string, any>): SMCSignalOutput 
           },
         ];
 
-  // Ensure X coordinates progress strictly left-to-right across the prediction trajectory
   for (let i = 1; i < normalizedPath.length; i++) {
     if (normalizedPath[i].x <= normalizedPath[i - 1].x) {
       const nextX = Math.min(95, normalizedPath[i - 1].x + 8);
@@ -1263,13 +1478,17 @@ export function normalizeSMCResponse(raw: Record<string, any>): SMCSignalOutput 
     prediction_path: normalizedPath,
   };
 
+  const dec = getPriceDecimals(entryPrice, resolvedAsset);
   const verificationChecks: string[] = [
     reconciled.priceGeometryValid
       ? isBullish
-        ? `Directional Geometry Verified: SL (${stopLoss}) < Entry (${entryPrice}) < TP1 (${takeProfit1}) < TP2 (${takeProfit2})`
-        : `Directional Geometry Verified: SL (${stopLoss}) > Entry (${entryPrice}) > TP1 (${takeProfit1}) > TP2 (${takeProfit2})`
+        ? `Directional Geometry Verified (${resolvedAsset}): SL (${stopLoss}) < Entry (${entryPrice}) < TP1 (${takeProfit1}) < TP2 (${takeProfit2})`
+        : `Directional Geometry Verified (${resolvedAsset}): SL (${stopLoss}) > Entry (${entryPrice}) > TP1 (${takeProfit1}) > TP2 (${takeProfit2})`
       : 'Neutral / Wait Mode: Awaiting structural breakout confirmation',
-    `Mathematical R:R Verified: ${riskToReward} (Risk: ${roundToPrecision(riskDistance, getPriceDecimals(entryPrice))}, Reward: ${roundToPrecision(rewardDistance, getPriceDecimals(entryPrice))})`,
+    `Mathematical R:R Verified: ${riskToReward} (Risk: ${roundToPrecision(
+      riskDistance,
+      dec
+    )}, Reward: ${roundToPrecision(rewardDistance, dec)})`,
     isBullish
       ? `Y-Axis Coordinate Alignment Verified: TP2 (${tp2Y}%) < TP1 (${tp1Y}%) < Entry (${entryY}%) < SL (${stopLossY}%)`
       : `Y-Axis Coordinate Alignment Verified: SL (${stopLossY}%) < Entry (${entryY}%) < TP1 (${tp1Y}%) < TP2 (${tp2Y}%)`,
@@ -1291,8 +1510,8 @@ export function normalizeSMCResponse(raw: Record<string, any>): SMCSignalOutput 
   };
 
   return {
-    asset: String(raw.asset || 'XAUUSD'),
-    timeframe: String(raw.timeframe || '15M'),
+    asset: resolvedAsset,
+    timeframe: resolvedTimeframe,
     chart_type: chartType,
     analysis_mode: analysisMode,
     bias,
@@ -1350,7 +1569,10 @@ export function normalizeSMCResponse(raw: Record<string, any>): SMCSignalOutput 
 /**
  * Parses JSON response safely even if wrapped in markdown codeblocks or surrounding text.
  */
-function extractJsonFromText(text: string): SMCSignalOutput {
+function extractJsonFromText(
+  text: string,
+  userHints?: { asset?: string; timeframe?: string }
+): SMCSignalOutput {
   let cleaned = text.trim();
   if (cleaned.startsWith('```json')) {
     cleaned = cleaned.replace(/^```json\s*/, '').replace(/\s*```$/, '');
@@ -1365,38 +1587,58 @@ function extractJsonFromText(text: string): SMCSignalOutput {
   }
 
   const parsed = JSON.parse(cleaned);
-  return normalizeSMCResponse(parsed);
+  return normalizeSMCResponse(parsed, userHints);
+}
+
+function buildUserContextPrompt(asset?: string, timeframe?: string): string {
+  const assetInstruction = isAutoAsset(asset)
+    ? 'Market Selection: AUTO-DETECT FROM CHART. Read the exact symbol/ticker from the chart header, watermark, legend, or title, and calibrate all prices strictly from the visible Y-axis.'
+    : `User-Provided Market: ${normalizeAssetSymbol(
+        asset
+      )}. Analyze this market accurately using its exact price scale on the chart's Y-axis. (Note: If the uploaded screenshot explicitly displays a different market ticker header AND a Y-axis price scale belonging to that other market, report the actual market visible on the chart in "detected_chart_symbol" and "asset".)`;
+
+  const tfInstruction = isAutoTimeframe(timeframe)
+    ? 'Timeframe Selection: AUTO-DETECT FROM CHART. Read the timeframe from the chart header/toolbar (default to 15M if cropped).'
+    : `User-Provided Timeframe: ${normalizeTimeframeKey(timeframe)}.`;
+
+  return `${assetInstruction}\n${tfInstruction}`;
 }
 
 /**
- * Calls Gemini Vision API with deterministic temperature 0.1 and pre-computed quantitative tool context
+ * Calls Gemini Vision API with deterministic temperature 0.1 and strict Y-axis anti-hallucination instructions.
  */
 async function callGeminiVision(
-  imageBase64: string,
+  imageBase64OrSvg: string,
   mimeType: string,
   apiKey: string,
   asset?: string,
   timeframe?: string,
-  toolPromptContext?: string
+  svgTextContent?: string
 ): Promise<SMCSignalOutput> {
   const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
+  const userContext = buildUserContextPrompt(asset, timeframe);
+
+  const parts: Array<Record<string, any>> = [
+    {
+      text: `${APEX_SMC_SYSTEM_PROMPT}\n\n${userContext}\n\nMANDATORY ANTI-HALLUCINATION CHECKLIST:\n1. Read the chart's visible Y-axis price labels first (axis_bottom_price, axis_top_price, current_market_price).\n2. Every price (entry_price, stop_loss, take_profit_1, take_profit_2, take_profit_3) and every zone price label MUST lie within or immediately adjacent to [axis_bottom_price, axis_top_price] from the screenshot.\n3. Never invent prices from training memory or a different market.\n4. Enforce strict price and Y-coordinate ordering for BUY vs SELL.`,
+    },
+  ];
+
+  if (mimeType === 'image/svg+xml' && svgTextContent) {
+    parts.push({
+      text: `UPLOADED CHART SVG SOURCE (Read header, Y-axis labels, and candle/line coordinates from this SVG):\n${svgTextContent}`,
+    });
+  } else {
+    parts.push({
+      inline_data: {
+        mime_type: mimeType || 'image/png',
+        data: imageBase64OrSvg,
+      },
+    });
+  }
 
   const payload = {
-    contents: [
-      {
-        parts: [
-          {
-            text: `${APEX_SMC_SYSTEM_PROMPT}\n\nSelected asset: ${asset || 'Detect from chart'}. Selected timeframe: ${timeframe || 'Detect from chart'}.\n\n${toolPromptContext || ''}\n\nRemember: (1) Calibrate visible Y-axis prices first, (2) ALWAYS return concrete, non-zero numeric entry_price, stop_loss, take_profit_1, and take_profit_2 levels from the screenshot (never 0 or N/A), (3) Enforce strict price and Y-coordinate ordering for BUY vs SELL, (4) Ensure stop_loss accounts for structural invalidation + 0.5x ATR buffer and risk_to_reward matches (TP1 - Entry) / (Entry - SL), and (5) NEVER reject line charts, area charts, or multi-day overlaid charts (such as Kitco spot charts).`,
-          },
-          {
-            inline_data: {
-              mime_type: mimeType || 'image/png',
-              data: imageBase64,
-            },
-          },
-        ],
-      },
-    ],
+    contents: [{ parts }],
     generationConfig: {
       temperature: 0.1,
       responseMimeType: 'application/json',
@@ -1419,11 +1661,11 @@ async function callGeminiVision(
     throw new Error('Empty response from Gemini Vision');
   }
 
-  return extractJsonFromText(textOutput);
+  return extractJsonFromText(textOutput, { asset, timeframe });
 }
 
 /**
- * Calls OpenAI GPT-4o Vision API with deterministic temperature 0.1 and pre-computed quantitative tool context
+ * Calls OpenAI GPT-4o Vision API with deterministic temperature 0.1 and strict Y-axis anti-hallucination instructions.
  */
 async function callOpenAIVision(
   imageBase64: string,
@@ -1431,9 +1673,31 @@ async function callOpenAIVision(
   apiKey: string,
   asset?: string,
   timeframe?: string,
-  toolPromptContext?: string
+  svgTextContent?: string
 ): Promise<SMCSignalOutput> {
   const url = 'https://api.openai.com/v1/chat/completions';
+  const userContext = buildUserContextPrompt(asset, timeframe);
+
+  const userContent: Array<Record<string, any>> = [
+    {
+      type: 'text',
+      text: 'Analyze this financial chart using the 6-Stage Institutional Verification Protocol. Calibrate visible Y-axis prices first, never hallucinate prices outside the visible Y-axis scale, enforce 0.5x ATR stop-loss buffering and (TP1 - Entry) / (Entry - SL) R:R math, and support both Candlestick SMC mode and Line/Area/Overlaid Macro Price Action mode. Return strictly the JSON schema.',
+    },
+  ];
+
+  if (mimeType === 'image/svg+xml' && svgTextContent) {
+    userContent.push({
+      type: 'text',
+      text: `UPLOADED CHART SVG SOURCE:\n${svgTextContent}`,
+    });
+  } else {
+    userContent.push({
+      type: 'image_url',
+      image_url: {
+        url: `data:${mimeType};base64,${imageBase64}`,
+      },
+    });
+  }
 
   const payload = {
     model: 'gpt-4o',
@@ -1442,22 +1706,11 @@ async function callOpenAIVision(
     messages: [
       {
         role: 'system',
-        content: `${APEX_SMC_SYSTEM_PROMPT}\n\nSelected asset: ${asset || 'Detect from chart'}. Selected timeframe: ${timeframe || 'Detect from chart'}.\n\n${toolPromptContext || ''}`,
+        content: `${APEX_SMC_SYSTEM_PROMPT}\n\n${userContext}`,
       },
       {
         role: 'user',
-        content: [
-          {
-            type: 'text',
-            text: 'Analyze this financial chart image using the 5-Stage Institutional Verification Protocol and the live multi-timeframe OHLCV + SMC Quant Engine + Macro Calendar + Prediction Memory context. Calibrate Y-axis prices first, enforce 0.5x ATR stop-loss buffering and (TP1 - Entry) / (Entry - SL) R:R math, and support both Candlestick SMC mode and Line/Area/Overlaid Macro Price Action mode—never reject line or Kitco overlaid charts. Return strictly the JSON schema.',
-          },
-          {
-            type: 'image_url',
-            image_url: {
-              url: `data:${mimeType};base64,${imageBase64}`,
-            },
-          },
-        ],
+        content: userContent,
       },
     ],
   };
@@ -1481,7 +1734,7 @@ async function callOpenAIVision(
     throw new Error('Empty response from OpenAI Vision');
   }
 
-  return extractJsonFromText(textOutput);
+  return extractJsonFromText(textOutput, { asset, timeframe });
 }
 
 /**
@@ -1492,22 +1745,31 @@ function buildQuantitativeFallbackAnalysis(
   news: MacroNewsGuardrailResult
 ): SMCSignalOutput {
   const isBearish = quant.overallQuantBias === 'BEARISH';
-  const decimals = getPriceDecimals(quant.currentPrice);
+  const decimals = getPriceDecimals(quant.currentPrice, quant.asset);
   const atr = Math.max(quant.atr14, quant.currentPrice * 0.0025);
   const halfAtr = roundToPrecision(atr * 0.5, decimals);
 
   const fvg = quant.unmitigatedFVGs[quant.unmitigatedFVGs.length - 1];
   const ob = quant.activeOrderBlocks[quant.activeOrderBlocks.length - 1];
 
-  const entryPrice = fvg
-    ? fvg.midpoint
-    : isBearish
-    ? quant.fibonacci.bearishPremiumOTE.ote618
-    : quant.fibonacci.bullishDiscountOTE.ote618;
+  const entryPrice = roundToPrecision(
+    fvg
+      ? fvg.midpoint
+      : isBearish
+      ? quant.fibonacci.bearishPremiumOTE.ote618
+      : quant.fibonacci.bullishDiscountOTE.ote618,
+    decimals
+  );
 
   const stopLoss = isBearish
-    ? roundToPrecision(Math.max(entryPrice + atr * 1.2, quant.structure.swingHigh) + halfAtr, decimals)
-    : roundToPrecision(Math.min(entryPrice - atr * 1.2, quant.structure.swingLow) - halfAtr, decimals);
+    ? roundToPrecision(
+        Math.max(entryPrice + atr * 1.2, quant.structure.swingHigh) + halfAtr,
+        decimals
+      )
+    : roundToPrecision(
+        Math.min(entryPrice - atr * 1.2, quant.structure.swingLow) - halfAtr,
+        decimals
+      );
 
   const riskDist = Math.abs(entryPrice - stopLoss);
   const takeProfit1 = isBearish
@@ -1558,7 +1820,9 @@ function buildQuantitativeFallbackAnalysis(
       market_structure: quant.structure.summary,
       liquidity_zones: quant.session.liquiditySweep.description,
       imbalances_and_obs: `${
-        fvg ? `${fvg.type} FVG [${fvg.bottom} - ${fvg.top}]` : `Equilibrium 0.5 @ ${quant.fibonacci.equilibrium50}`
+        fvg
+          ? `${fvg.type} FVG [${fvg.bottom} - ${fvg.top}]`
+          : `Equilibrium 0.5 @ ${quant.fibonacci.equilibrium50}`
       } | ${ob ? `${ob.type} OB [${ob.bottom} - ${ob.top}]` : `Session VWAP @ ${quant.sessionVwap}`}`,
       fibonacci_or_session_context: `0.5 EQ @ ${quant.fibonacci.equilibrium50} (${quant.fibonacci.currentPosition}) | Session: ${quant.session.sessionName}`,
     },
@@ -1574,7 +1838,10 @@ function buildQuantitativeFallbackAnalysis(
     },
   };
 
-  return normalizeSMCResponse(rawMock);
+  return normalizeSMCResponse(rawMock, {
+    asset: quant.asset,
+    timeframe: quant.primaryTimeframe,
+  });
 }
 
 export interface AnalyzeChartHints {
@@ -1587,7 +1854,7 @@ export interface AnalyzeChartHints {
 }
 
 /**
- * Route chart images through the 5-tool quantitative pipeline + configured AI vision provider.
+ * Route chart images through the Vision-First Y-Axis Calibration + 5-Tool Quantitative Verification Pipeline.
  */
 export async function analyzeChartImage(
   dataUrlOrBase64: string,
@@ -1601,51 +1868,56 @@ export async function analyzeChartImage(
     (sampleId ? SAMPLE_CHARTS.find((chart) => chart.id === sampleId) : undefined) ||
     SAMPLE_CHARTS.find((chart) => chart.thumbnailUrl === dataUrlOrBase64);
 
-  const preliminaryAsset = hints?.asset || matchedSample?.asset || 'XAUUSD';
-  const preliminaryTimeframe = hints?.timeframe || matchedSample?.timeframe || '15M';
-
-  // Run or reuse pre-computed backend quantitative tools
-  const mtfData =
-    hints?.mtfData ||
-    (await fetchMultiTimeframeMarketData(preliminaryAsset, preliminaryTimeframe));
-  const quantReport =
-    hints?.quantReport || runQuantEngine(mtfData, preliminaryTimeframe);
-  const macroNews =
-    hints?.macroNews || (await checkMacroNewsGuardrail(mtfData.asset));
-  const memoryContext =
-    hints?.memoryContext ||
-    (await queryHistoricalPredictionMemory(
-      mtfData.asset,
-      quantReport.primaryTimeframe,
-      quantReport.currentPrice
-    ));
-
   if (matchedSample) {
-    const normalizedSample = normalizeSMCResponse(matchedSample.mockAnalysis);
+    const sampleAsset = !isAutoAsset(hints?.asset)
+      ? normalizeAssetSymbol(hints?.asset)
+      : matchedSample.asset;
+    const sampleTf = !isAutoTimeframe(hints?.timeframe)
+      ? normalizeTimeframeKey(hints?.timeframe)
+      : normalizeTimeframeKey(matchedSample.timeframe);
+    const normalizedSample = normalizeSMCResponse(matchedSample.mockAnalysis, {
+      asset: sampleAsset,
+      timeframe: sampleTf,
+    });
+    const mtfData =
+      hints?.mtfData ||
+      (await fetchMultiTimeframeMarketData(sampleAsset, sampleTf, {
+        referencePrice: normalizedSample.entry_price,
+        preferredBias: normalizedSample.bias,
+      }));
+    const quantReport = hints?.quantReport || runQuantEngine(mtfData, sampleTf);
+    const macroNews = hints?.macroNews || (await checkMacroNewsGuardrail(mtfData.asset));
+    const memoryContext =
+      hints?.memoryContext ||
+      (await queryHistoricalPredictionMemory(
+        mtfData.asset,
+        quantReport.primaryTimeframe,
+        normalizedSample.entry_price || quantReport.currentPrice
+      ));
     return validateAndEnrichSetup(
       normalizedSample,
       quantReport,
       macroNews,
-      memoryContext.historicalPerformanceNote
+      memoryContext.historicalPerformanceNote,
+      mtfData.source
     ).validatedSignal;
   }
 
-  const combinedToolPrompt = [
-    '=== LIVE QUANTITATIVE & INSTITUTIONAL TOOL TELEMETRY ===',
-    mtfData.promptSummary,
-    '',
-    quantReport.promptContext,
-    '',
-    macroNews.promptContext,
-    '',
-    memoryContext.promptContext,
-    '=== END OF QUANTITATIVE TOOL TELEMETRY ===',
-  ].join('\n');
-
   let base64 = dataUrlOrBase64;
   let mimeType = 'image/png';
+  let svgTextContent: string | undefined;
 
-  if (dataUrlOrBase64.startsWith('data:')) {
+  if (dataUrlOrBase64.startsWith('data:image/svg+xml')) {
+    mimeType = 'image/svg+xml';
+    const commaIdx = dataUrlOrBase64.indexOf(',');
+    if (commaIdx !== -1) {
+      const header = dataUrlOrBase64.slice(0, commaIdx);
+      const payload = dataUrlOrBase64.slice(commaIdx + 1);
+      svgTextContent = header.includes(';base64')
+        ? Buffer.from(payload, 'base64').toString('utf8')
+        : decodeURIComponent(payload);
+    }
+  } else if (dataUrlOrBase64.startsWith('data:')) {
     const matches = dataUrlOrBase64.match(/^data:([^;]+);base64,([\s\S]+)$/);
     if (matches) {
       mimeType = matches[1] === 'image/jpg' ? 'image/jpeg' : matches[1];
@@ -1655,6 +1927,7 @@ export async function analyzeChartImage(
 
   let rawSignal: SMCSignalOutput | null = null;
 
+  // Step 1: Run Vision AI first without synthetic price contamination so it reads the chart's true market, timeframe, and Y-axis
   if (geminiKey && geminiKey.trim() !== '') {
     try {
       rawSignal = await callGeminiVision(
@@ -1663,7 +1936,7 @@ export async function analyzeChartImage(
         geminiKey,
         hints?.asset,
         hints?.timeframe,
-        combinedToolPrompt
+        svgTextContent
       );
     } catch (err) {
       console.warn('Gemini Vision call failed; attempting fallback:', err);
@@ -1678,28 +1951,76 @@ export async function analyzeChartImage(
         openaiKey,
         hints?.asset,
         hints?.timeframe,
-        combinedToolPrompt
+        svgTextContent
       );
     } catch (err) {
       console.warn('OpenAI Vision call failed; attempting quantitative fallback:', err);
     }
   }
 
-  if (!rawSignal) {
-    rawSignal = buildQuantitativeFallbackAnalysis(quantReport, macroNews);
-  }
-
   if (
-    rawSignal.error === 'IMAGE_UNREADABLE' ||
-    rawSignal.trade_execution?.setup_type === 'INVALID_IMAGE'
+    rawSignal &&
+    (rawSignal.error === 'IMAGE_UNREADABLE' ||
+      rawSignal.trade_execution?.setup_type === 'INVALID_IMAGE')
   ) {
     return rawSignal;
+  }
+
+  // Step 2: Resolve authoritative market, timeframe, and calibrated chart price
+  const resolvedAsset = normalizeAssetSymbol(
+    rawSignal?.asset || (!isAutoAsset(hints?.asset) ? hints?.asset : 'XAUUSD')
+  );
+  const resolvedTimeframe = normalizeTimeframeKey(
+    rawSignal?.timeframe || (!isAutoTimeframe(hints?.timeframe) ? hints?.timeframe : '15M')
+  );
+  const chartReferencePrice =
+    rawSignal?.accuracy_verification?.current_market_price ||
+    rawSignal?.entry_price ||
+    undefined;
+
+  // Step 3: Fetch/align multi-timeframe market data & quant engine for the exact resolved market and chart price scale
+  const mtfData =
+    hints?.mtfData &&
+    hints.mtfData.asset === resolvedAsset &&
+    hints.mtfData.primaryTimeframe === resolvedTimeframe
+      ? hints.mtfData
+      : await fetchMultiTimeframeMarketData(resolvedAsset, resolvedTimeframe, {
+          referencePrice: chartReferencePrice,
+          preferredBias: rawSignal?.bias,
+        });
+
+  const quantReport =
+    hints?.quantReport &&
+    hints.quantReport.asset === resolvedAsset &&
+    hints.quantReport.primaryTimeframe === resolvedTimeframe
+      ? hints.quantReport
+      : runQuantEngine(mtfData, resolvedTimeframe);
+
+  const macroNews =
+    hints?.macroNews && hints.macroNews.asset === resolvedAsset
+      ? hints.macroNews
+      : await checkMacroNewsGuardrail(resolvedAsset);
+
+  const memoryContext =
+    hints?.memoryContext &&
+    hints.memoryContext.asset === resolvedAsset &&
+    hints.memoryContext.timeframe === resolvedTimeframe
+      ? hints.memoryContext
+      : await queryHistoricalPredictionMemory(
+          resolvedAsset,
+          resolvedTimeframe,
+          chartReferencePrice || quantReport.currentPrice
+        );
+
+  if (!rawSignal) {
+    rawSignal = buildQuantitativeFallbackAnalysis(quantReport, macroNews);
   }
 
   return validateAndEnrichSetup(
     rawSignal,
     quantReport,
     macroNews,
-    memoryContext.historicalPerformanceNote
+    memoryContext.historicalPerformanceNote,
+    mtfData.source
   ).validatedSignal;
 }

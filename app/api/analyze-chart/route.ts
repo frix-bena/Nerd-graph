@@ -3,18 +3,8 @@ import { analyzeChartImage } from '@/lib/vision-engine';
 import { prisma } from '@/lib/prisma';
 import { TradeAnalysis } from '@/lib/types';
 import { SAMPLE_CHARTS } from '@/lib/sample-charts';
-import {
-  fetchMultiTimeframeMarketData,
-  normalizeAssetSymbol,
-  normalizeTimeframeKey,
-} from '@/lib/tools/marketData';
-import { runQuantEngine } from '@/lib/tools/quantEngine';
-import { checkMacroNewsGuardrail } from '@/lib/tools/macroNews';
-import { validateAndEnrichSetup } from '@/lib/tools/riskValidator';
-import {
-  logTradePredictionSilently,
-  queryHistoricalPredictionMemory,
-} from '@/lib/tools/predictionMemory';
+import { detectSessionAndLiquiditySweep } from '@/lib/tools/quantEngine';
+import { logTradePredictionSilently } from '@/lib/tools/predictionMemory';
 
 export const runtime = 'nodejs';
 const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
@@ -153,38 +143,10 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const matchedSample = data.sampleId
-      ? SAMPLE_CHARTS.find((sample) => sample.id === data.sampleId)
-      : undefined;
-    const initialAsset = normalizeAssetSymbol(data.asset || matchedSample?.asset || 'XAUUSD');
-    const initialTimeframe = normalizeTimeframeKey(
-      data.timeframe || matchedSample?.timeframe || '15M'
-    );
-
-    // 1. Pull live Multi-Timeframe OHLCV (4H, 1H, 15M, 5M) via MT5 Bridge or REST fallback
-    let mtfData = await fetchMultiTimeframeMarketData(initialAsset, initialTimeframe);
-
-    // 2. Run Deterministic Quantitative & Smart Money Concepts (SMC) Engine
-    let quantReport = runQuantEngine(mtfData, initialTimeframe);
-
-    // 3. Check Macro Economic Calendar Guardrail for High-Impact Red-Folder news (±60m)
-    let macroNews = await checkMacroNewsGuardrail(mtfData.asset);
-
-    // 4. Query Silent PostgreSQL/Prisma Prediction Memory for historical accuracy context
-    let memoryContext = await queryHistoricalPredictionMemory(
-      mtfData.asset,
-      quantReport.primaryTimeframe,
-      quantReport.currentPrice
-    );
-
-    // 5. Execute Vision AI Analysis with full quantitative & historical prompt telemetry
-    let result = await analyzeChartImage(imageData, data.sampleId, {
+    // Execute Vision-First Chart Analysis + Market-Aligned Quantitative & Risk Validation Pipeline
+    const result = await analyzeChartImage(imageData, data.sampleId, {
       asset: data.asset,
       timeframe: data.timeframe,
-      mtfData,
-      quantReport,
-      macroNews,
-      memoryContext,
     });
 
     if (
@@ -204,29 +166,9 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const resolvedAsset = data.asset?.trim() || result.asset;
-    const resolvedTimeframe = data.timeframe?.trim() || result.timeframe;
-
-    // If the vision model detected a different asset/timeframe on the screenshot, re-align quant tools & risk validator
-    if (
-      normalizeAssetSymbol(resolvedAsset) !== mtfData.asset ||
-      normalizeTimeframeKey(resolvedTimeframe) !== quantReport.primaryTimeframe
-    ) {
-      mtfData = await fetchMultiTimeframeMarketData(resolvedAsset, resolvedTimeframe);
-      quantReport = runQuantEngine(mtfData, resolvedTimeframe);
-      macroNews = await checkMacroNewsGuardrail(mtfData.asset);
-      memoryContext = await queryHistoricalPredictionMemory(
-        mtfData.asset,
-        quantReport.primaryTimeframe,
-        quantReport.currentPrice
-      );
-      result = validateAndEnrichSetup(
-        result,
-        quantReport,
-        macroNews,
-        memoryContext.historicalPerformanceNote
-      ).validatedSignal;
-    }
+    const resolvedAsset = result.asset || data.asset?.trim() || 'XAUUSD';
+    const resolvedTimeframe = result.timeframe || data.timeframe?.trim() || '15M';
+    const activeSession = detectSessionAndLiquiditySweep([], 2);
 
     if (!validAnalysis(result)) {
       return NextResponse.json(
@@ -285,7 +227,7 @@ export async function POST(request: NextRequest) {
       stopLoss: analysis.stop_loss,
       tp1: analysis.take_profit_1,
       tp2: analysis.take_profit_2,
-      sessionName: quantReport.session.sessionName,
+      sessionName: activeSession.sessionName,
       outcome: 'PENDING',
     });
 

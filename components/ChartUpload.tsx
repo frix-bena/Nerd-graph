@@ -6,6 +6,8 @@ import {
   Image as ImageIcon,
   Loader2,
   ScanLine,
+  Search,
+  Sparkles,
   UploadCloud,
 } from 'lucide-react';
 import { SAMPLE_CHARTS, SampleChart } from '@/lib/sample-charts';
@@ -24,21 +26,32 @@ interface ChartUploadProps {
 }
 
 const ASSETS = [
+  'AUTO',
   'XAUUSD',
+  'XAGUSD',
+  'USOIL',
   'EURUSD',
   'GBPUSD',
   'USDJPY',
+  'GBPJPY',
+  'AUDUSD',
+  'USDCAD',
   'NAS100',
   'US30',
+  'SPX500',
+  'GER40',
   'BTCUSDT',
   'ETHUSDT',
+  'SOLUSDT',
+  'XRPUSDT',
 ];
 
 const TIMEFRAME_OPTIONS: {
   value: string;
   label: string;
-  category: 'Scalping' | 'Intraday' | 'Swing / Macro';
+  category: 'Auto-Detect' | 'Scalping' | 'Intraday' | 'Swing / Macro';
 }[] = [
+  { value: 'AUTO', label: 'AUTO', category: 'Auto-Detect' },
   { value: '1M', label: '1M', category: 'Scalping' },
   { value: '3M', label: '3M', category: 'Scalping' },
   { value: '5M', label: '5M', category: 'Scalping' },
@@ -63,12 +76,12 @@ export default function ChartUpload({
   const [isDragOver, setIsDragOver] = useState(false);
   const [preview, setPreview] = useState<string | null>(persistedImage || null);
   const [selectedSample, setSelectedSample] = useState<SampleChart | null>(null);
-  const [asset, setAsset] = useState('XAUUSD');
-  const [timeframe, setTimeframe] = useState('15M');
+  const [asset, setAsset] = useState('AUTO');
+  const [customAsset, setCustomAsset] = useState('');
+  const [timeframe, setTimeframe] = useState('AUTO');
   const [error, setError] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Sync external persistedImage if parent updates it (e.g. quick sample scan), without ever clearing an existing Base64 preview on scan completion
   useEffect(() => {
     if (persistedImage && persistedImage.trim() !== '') {
       setPreview(persistedImage);
@@ -87,7 +100,14 @@ export default function ChartUpload({
         return;
       }
       setError('');
-      setSelectedSample(null);
+      // If a sample chart was previously loaded, reset to AUTO so the old sample's symbol doesn't override the user's new chart
+      if (selectedSample) {
+        setSelectedSample(null);
+        if (!customAsset.trim()) {
+          setAsset('AUTO');
+          setTimeframe('AUTO');
+        }
+      }
       const reader = new FileReader();
       reader.onload = () => {
         if (typeof reader.result === 'string' && reader.result.startsWith('data:')) {
@@ -100,7 +120,7 @@ export default function ChartUpload({
       reader.onerror = () => setError('The selected image could not be read.');
       reader.readAsDataURL(file);
     },
-    [onImageChange]
+    [onImageChange, selectedSample, customAsset]
   );
 
   useEffect(() => {
@@ -116,6 +136,7 @@ export default function ChartUpload({
 
   const selectSample = (sample: SampleChart) => {
     setAsset(sample.asset);
+    setCustomAsset('');
     setTimeframe(sample.timeframe.toUpperCase());
     setSelectedSample(sample);
     setPreview(sample.thumbnailUrl);
@@ -123,11 +144,13 @@ export default function ChartUpload({
     setError('');
   };
 
+  const effectiveAsset = customAsset.trim().toUpperCase() || asset;
+
   const scan = () => {
     const activeDataUrl = preview || persistedImage;
     if (activeDataUrl) {
       void onAnalyze(activeDataUrl, {
-        asset,
+        asset: effectiveAsset,
         timeframe,
         ...(selectedSample ? { sampleId: selectedSample.id } : {}),
       });
@@ -151,39 +174,68 @@ export default function ChartUpload({
       </div>
 
       <div className="space-y-3 rounded-xl border border-[#E2E8F0] bg-[#F8FAFC] p-3.5">
-        <div className="space-y-1.5">
+        <div className="space-y-2">
           <div className="flex items-center justify-between">
             <span className="text-[10px] font-bold uppercase tracking-wider text-[#475569]">
-              Select Asset / Market
+              Select Asset / Market (Or Auto-Detect from Chart)
             </span>
-            <span className="font-mono text-[10px] font-bold text-[#1D4ED8]">{asset}</span>
+            <span className="font-mono text-[10px] font-bold text-[#1D4ED8]">
+              {effectiveAsset === 'AUTO' ? '✨ AUTO-DETECT' : effectiveAsset}
+            </span>
           </div>
           <div className="flex flex-wrap items-center gap-1.5">
-            {ASSETS.map((value) => (
-              <button
-                key={value}
-                type="button"
-                onClick={() => setAsset(value)}
-                className={`rounded-full border px-2.5 py-1 text-[11px] font-mono font-semibold transition ${
-                  asset === value
-                    ? 'border-[#1D4ED8] bg-[#EFF6FF] text-[#1D4ED8] shadow-sm'
-                    : 'border-[#CBD5E1] bg-white text-[#475569] hover:border-[#93C5FD] hover:bg-[#EFF6FF]/60 hover:text-[#0F172A]'
-                }`}
-              >
-                {value}
-              </button>
-            ))}
+            {ASSETS.map((value) => {
+              const isSelected = !customAsset.trim() && asset === value;
+              return (
+                <button
+                  key={value}
+                  type="button"
+                  onClick={() => {
+                    setAsset(value);
+                    setCustomAsset('');
+                  }}
+                  className={`rounded-full border px-2.5 py-1 text-[11px] font-mono font-semibold transition inline-flex items-center gap-1 ${
+                    isSelected
+                      ? 'border-[#1D4ED8] bg-[#EFF6FF] text-[#1D4ED8] shadow-sm'
+                      : 'border-[#CBD5E1] bg-white text-[#475569] hover:border-[#93C5FD] hover:bg-[#EFF6FF]/60 hover:text-[#0F172A]'
+                  }`}
+                >
+                  {value === 'AUTO' && <Sparkles className="h-3 w-3 text-[#1D4ED8]" />}
+                  <span>{value === 'AUTO' ? 'AUTO-DETECT' : value}</span>
+                </button>
+              );
+            })}
+          </div>
+
+          <div className="relative pt-1">
+            <Search className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-[#475569]" />
+            <input
+              type="text"
+              value={customAsset}
+              onChange={(e) => {
+                const val = e.target.value.toUpperCase();
+                setCustomAsset(val);
+                if (val.trim()) {
+                  setAsset(val.trim());
+                } else {
+                  setAsset('AUTO');
+                }
+              }}
+              placeholder="Or type any custom market / ticker (e.g. NVDA, AAPL, EURJPY, DOGEUSDT, DXY)…"
+              aria-label="Custom market ticker symbol"
+              className="w-full rounded-lg border border-[#CBD5E1] bg-white pl-8 pr-3 py-1.5 text-xs font-mono text-[#0F172A] placeholder:font-sans placeholder:text-[#64748B] focus:border-[#1D4ED8] focus:outline-none focus:ring-1 focus:ring-[#1D4ED8]"
+            />
           </div>
         </div>
 
         <div className="border-t border-[#E2E8F0] pt-2.5 space-y-1.5">
           <div className="flex items-center justify-between">
             <span className="text-[10px] font-bold uppercase tracking-wider text-[#475569]">
-              Select Timeframe (Scalp · Intraday · Swing · Macro)
+              Select Timeframe (Auto · Scalp · Intraday · Swing · Macro)
             </span>
             <span className="font-mono text-[10px] font-bold text-[#1D4ED8]">
               {timeframe} ·{' '}
-              {TIMEFRAME_OPTIONS.find((t) => t.value === timeframe)?.category || 'Intraday'}
+              {TIMEFRAME_OPTIONS.find((t) => t.value === timeframe)?.category || 'Auto-Detect'}
             </span>
           </div>
           <div className="flex flex-wrap items-center gap-1.5">
@@ -210,7 +262,9 @@ export default function ChartUpload({
         <div className="overflow-hidden rounded-xl border border-[#CBD5E1] bg-[#F8FAFC]">
           <div className="flex items-center justify-between border-b border-[#E2E8F0] bg-white px-3 py-2">
             <span className="flex items-center gap-2 text-xs font-medium text-[#0F172A]">
-              <ImageIcon className="h-3.5 w-3.5 text-[#1D4ED8]" /> Preview · {asset} · {timeframe}
+              <ImageIcon className="h-3.5 w-3.5 text-[#1D4ED8]" /> Preview ·{' '}
+              {effectiveAsset === 'AUTO' ? 'Auto-Detect Market' : effectiveAsset} ·{' '}
+              {timeframe === 'AUTO' ? 'Auto TF' : timeframe}
             </span>
             <div className="flex items-center gap-2">
               <button
@@ -236,7 +290,7 @@ export default function ChartUpload({
           <div className="relative w-full bg-[#F8FAFC] p-2">
             <img
               src={activePreviewUrl}
-              alt={`${asset} ${timeframe} chart preview`}
+              alt={`${effectiveAsset} ${timeframe} chart preview`}
               className="max-h-64 w-full rounded-lg object-contain bg-[#F8FAFC] block"
             />
           </div>

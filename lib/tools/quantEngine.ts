@@ -3,6 +3,7 @@ import {
   MultiTimeframeMarketContext,
   OHLCVCandle,
   SupportedTimeframe,
+  getAssetDecimals,
   normalizeTimeframeKey,
 } from './marketData';
 
@@ -135,12 +136,7 @@ export interface QuantEngineOutput {
 }
 
 function getDecimalsForAsset(asset: string, samplePrice: number): number {
-  const upper = asset.toUpperCase();
-  if (upper === 'EURUSD' || upper === 'GBPUSD') return 5;
-  if (upper === 'XAUUSD') return 2;
-  if (upper === 'NAS100' || upper === 'US30' || upper === 'BTCUSDT') return 1;
-  if (samplePrice > 0 && samplePrice < 10) return 4;
-  return 2;
+  return getAssetDecimals(asset, samplePrice);
 }
 
 function roundTo(val: number, decimals: number): number {
@@ -942,16 +938,25 @@ export function runQuantEngine(
   const lineChartMacroSupportNote =
     'LINE / OVERLAID CHART COMPATIBILITY GUARDRAIL: If the uploaded screenshot is a line chart, area chart, or multi-day overlaid spot curve (e.g., Kitco gold/silver spot chart), DO NOT invalidate or reject the image for missing candlestick wicks. Map FVG/OB structural zones onto horizontal support/resistance flip shelves and multi-session baseline curves while retaining exact ATR stop-loss buffering and R:R math.';
 
-  const promptContext = [
-    `DETERMINISTIC QUANTITATIVE & SMART MONEY CONCEPTS (SMC) ENGINE REPORT (${mtf.asset} @ ${primaryTf}):`,
-    `  1. Multi-Timeframe Structure: HTF (4H/1H) Bias = ${htfBias} | LTF (15M/5M) Bias = ${ltfBias} | Primary ${primaryTf}: ${structureSummary}`,
-    `  2. Unmitigated Fair Value Gaps (FVG): ${fvgSummary}`,
-    `  3. Institutional Order Blocks (OB): ${obSummary}`,
-    `  4. Dealing Range & Fibonacci Zones: Range [${primarySnap.fibonacci.dealingRangeLow} - ${primarySnap.fibonacci.dealingRangeHigh}] | 0.5 EQ = ${primarySnap.fibonacci.equilibrium50} | Current Zone = ${primarySnap.fibonacci.currentPosition} | Bullish Discount OTE (0.618-0.786) = [${primarySnap.fibonacci.bullishDiscountOTE.ote786} - ${primarySnap.fibonacci.bullishDiscountOTE.ote618}] | Bearish Premium OTE (0.618-0.786) = [${primarySnap.fibonacci.bearishPremiumOTE.ote618} - ${primarySnap.fibonacci.bearishPremiumOTE.ote786}]`,
-    `  5. Volatility & Momentum Indicators: ATR(14) = ${primarySnap.atr14} (0.5x ATR SL Buffer = ${halfAtrBuffer}) | RSI(14) = ${rsi14} (${rsiState}) | Session VWAP = ${primarySnap.vwap} | ${primarySnap.ema.stackLabel}`,
-    `  6. Active Session & Liquidity Sweep: Session = ${session.sessionName} (${session.sessionWindowLabel}) | Sweep = ${session.liquiditySweep.description}`,
-    `  7. ${lineChartMacroSupportNote}`,
-  ].join('\n');
+  const promptContext =
+    mtf.source === 'INSTITUTIONAL_SYNTHETIC_FALLBACK'
+      ? [
+          `QUANTITATIVE & SMC ENGINE INSTRUCTIONS (${mtf.asset} @ ${primaryTf}):`,
+          `  1. Active Trading Session: ${session.sessionName} (${session.sessionWindowLabel})`,
+          `  2. Anti-Hallucination Guardrail: External live OHLCV feed is offline for ${mtf.asset}. DO NOT use external or memorized price levels. Read 100% of swing highs/lows, BOS/CHoCH breaks, FVG/Order Block ranges, and entry/SL/TP prices strictly from the visible Y-axis price scale of the uploaded screenshot.`,
+          `  3. ${lineChartMacroSupportNote}`,
+        ].join('\n')
+      : [
+          `DETERMINISTIC QUANTITATIVE & SMART MONEY CONCEPTS (SMC) ENGINE REPORT (${mtf.asset} @ ${primaryTf} | Source: ${mtf.source}):`,
+          `  1. Multi-Timeframe Structure: HTF (4H/1H) Bias = ${htfBias} | LTF (15M/5M) Bias = ${ltfBias} | Primary ${primaryTf}: ${structureSummary}`,
+          `  2. Unmitigated Fair Value Gaps (FVG): ${fvgSummary}`,
+          `  3. Institutional Order Blocks (OB): ${obSummary}`,
+          `  4. Dealing Range & Fibonacci Zones: Range [${primarySnap.fibonacci.dealingRangeLow} - ${primarySnap.fibonacci.dealingRangeHigh}] | 0.5 EQ = ${primarySnap.fibonacci.equilibrium50} | Current Zone = ${primarySnap.fibonacci.currentPosition} | Bullish Discount OTE (0.618-0.786) = [${primarySnap.fibonacci.bullishDiscountOTE.ote786} - ${primarySnap.fibonacci.bullishDiscountOTE.ote618}] | Bearish Premium OTE (0.618-0.786) = [${primarySnap.fibonacci.bearishPremiumOTE.ote618} - ${primarySnap.fibonacci.bearishPremiumOTE.ote786}]`,
+          `  5. Volatility & Momentum Indicators: ATR(14) = ${primarySnap.atr14} (0.5x ATR SL Buffer = ${halfAtrBuffer}) | RSI(14) = ${rsi14} (${rsiState}) | Session VWAP = ${primarySnap.vwap} | ${primarySnap.ema.stackLabel}`,
+          `  6. Active Session & Liquidity Sweep: Session = ${session.sessionName} (${session.sessionWindowLabel}) | Sweep = ${session.liquiditySweep.description}`,
+          `  7. CRITICAL ANTI-HALLUCINATION RULE: Only use the numeric price levels above if they fall within the uploaded chart's visible Y-axis range (axis_bottom_price to axis_top_price). If the screenshot shows a different price window or historical date, ignore these telemetry numbers and derive all trade levels and zones 100% from the screenshot's visible Y-axis.`,
+          `  8. ${lineChartMacroSupportNote}`,
+        ].join('\n');
 
   return {
     asset: mtf.asset,

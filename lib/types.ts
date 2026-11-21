@@ -224,6 +224,18 @@ export function formatSignalPrice(value: unknown, asset?: string): string {
       maximumFractionDigits: 2,
     });
   }
+  if (upperAsset.includes('XAG') || upperAsset.includes('SILVER')) {
+    return num.toLocaleString('en-US', {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 3,
+    });
+  }
+  if (num < 0.01) {
+    return num.toLocaleString('en-US', {
+      minimumFractionDigits: 6,
+      maximumFractionDigits: 7,
+    });
+  }
   if (num < 1) {
     return num.toLocaleString('en-US', {
       minimumFractionDigits: 4,
