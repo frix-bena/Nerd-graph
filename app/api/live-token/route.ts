@@ -9,11 +9,24 @@ export const runtime = 'nodejs';
 const LIVE_PRIMARY_MODEL = 'gemini-3.8-live';
 const LIVE_FALLBACK_MODEL = 'gemini-3.1-flash-live-preview';
 
-const APEX_LIVE_SYSTEM_INSTRUCTION = `You are the Apex Vision AI Live Institutional Trading Co-Pilot. You are on a real-time two-way voice and screen-sharing call with an active trader watching their chart (TradingView, MetaTrader 5, or browser chart).
+interface CachedEphemeralToken {
+  token: string;
+  expireTime: string;
+  createdAt: number;
+}
+
+let cachedLiveToken: CachedEphemeralToken | null = null;
+const TOKEN_CACHE_TTL_MS = 3 * 60 * 1000; // Reuse pre-warmed token for 3 minutes for instant connection
+
+const APEX_LIVE_SYSTEM_INSTRUCTION = `You are Apex, the Apex Vision AI Live Institutional SMC Trading Co-Pilot. You are on a real-time two-way voice and screen-sharing call with an active trader watching their chart (TradingView, MetaTrader 5, or browser chart).
+
+INTRODUCTION & IDENTITY PROTOCOL:
+- Your name is Apex (the Apex Vision AI Live SMC Trading Co-Pilot).
+- At the start of a session (or whenever greeted/asked who you are), immediately speak a warm, confident, concise spoken introduction (2 to 3 sentences): state your name ("Hi, I'm Apex, your Apex Vision AI Live SMC Trading Co-Pilot"), explain what you do ("I analyze your live shared trading charts in real time for Smart Money Concepts like Order Blocks, Fair Value Gaps, Break of Structure, and liquidity sweeps, verify multi-timeframe quant structure, and monitor red-folder macro news"), and invite the trader to share their screen or ask about any market setup.
 
 CORE VOICE & CO-PILOT PROTOCOL:
 1. CONCISE & NATURAL SPEECH: Keep spoken responses brief, sharp, and institutional (1 to 3 concise sentences per turn). Speak naturally like a senior prop-desk execution co-pilot sitting next to the trader. Never read out markdown formatting, bullet asterisks, or raw JSON.
-2. LIVE SCREEN AWARENESS: When screen sharing is active, you receive 1 FPS JPEG snapshots of the trader's chart. Read the visible ticker header, timeframe, Y-axis price scale, candlesticks or spot line, liquidity sweeps (BSL/SSL), Break of Structure (BOS), Change of Character (CHoCH), Fair Value Gaps (FVG), Order Blocks (OB), and horizontal support/resistance levels directly from the live video feed.
+2. LIVE SCREEN AWARENESS: The trader can share their screen at any time. When screen sharing starts or is active, you receive 1 FPS JPEG snapshots of their screen. Immediately acknowledge when they start sharing their screen, and read the visible ticker header, timeframe, Y-axis price scale, candlesticks or spot line, liquidity sweeps (BSL/SSL), Break of Structure (BOS), Change of Character (CHoCH), Fair Value Gaps (FVG), Order Blocks (OB), and support/resistance levels directly from the live video feed.
 3. ANTI-HALLUCINATION MANDATE: Never guess or invent prices disconnected from the visible chart Y-axis or your live quantitative tools. When quoting entry, stop loss (buffered by 0.5x ATR), or take profit levels, state clear, exact numbers.
 4. REAL-TIME QUANTITATIVE TOOLS:
    - Call "fetch_market_data" when the trader asks for live spot prices, multi-timeframe OHLCV ranges, 24h high/low, or MT5 bridge status on any asset (e.g. XAUUSD, EURUSD, NAS100, BTCUSDT, USDJPY, GBPUSD).
@@ -100,12 +113,34 @@ export async function GET(request: NextRequest) {
   }
 
   const requestedModel = request.nextUrl.searchParams.get('model')?.trim();
+  const forceRefresh = request.nextUrl.searchParams.get('refresh') === '1';
   const preferredModel =
     requestedModel === LIVE_FALLBACK_MODEL ? LIVE_FALLBACK_MODEL : LIVE_PRIMARY_MODEL;
 
   const now = Date.now();
+
+  if (
+    !forceRefresh &&
+    cachedLiveToken &&
+    now - cachedLiveToken.createdAt < TOKEN_CACHE_TTL_MS
+  ) {
+    return NextResponse.json({
+      token: cachedLiveToken.token,
+      apiVersion: 'v1alpha',
+      model: preferredModel,
+      fallbackModel: LIVE_FALLBACK_MODEL,
+      expireTime: cachedLiveToken.expireTime,
+      cached: true,
+      sessionConfig: {
+        responseModalities: [Modality.AUDIO],
+        systemInstruction: APEX_LIVE_SYSTEM_INSTRUCTION,
+        tools: [{ functionDeclarations: LIVE_TOOL_DECLARATIONS }],
+      },
+    });
+  }
+
   const expireTime = new Date(now + 30 * 60 * 1000).toISOString();
-  const newSessionExpireTime = new Date(now + 5 * 60 * 1000).toISOString();
+  const newSessionExpireTime = new Date(now + 10 * 60 * 1000).toISOString();
 
   try {
     const ai = new GoogleGenAI({
@@ -115,7 +150,7 @@ export async function GET(request: NextRequest) {
 
     const authToken = await ai.authTokens.create({
       config: {
-        uses: 5,
+        uses: 25,
         expireTime,
         newSessionExpireTime,
       },
@@ -124,6 +159,12 @@ export async function GET(request: NextRequest) {
     if (!authToken?.name) {
       throw new Error('Ephemeral token response did not include a token name.');
     }
+
+    cachedLiveToken = {
+      token: authToken.name,
+      expireTime,
+      createdAt: now,
+    };
 
     return NextResponse.json({
       token: authToken.name,

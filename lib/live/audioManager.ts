@@ -156,17 +156,37 @@ export class LiveAudioManager {
   private consecutiveSpeechFrames = 0;
   private silenceFrames = 0;
   private userSpeaking = false;
-  private readonly bargeInRmsThreshold = 0.045;
-  private readonly bargeInRequiredFrames = 3;
+  private micStartedAt = 0;
+  private readonly bargeInRmsThreshold = 0.085;
+  private readonly bargeInRequiredFrames = 5;
+  private readonly bargeInGracePeriodMs = 1600;
 
   constructor(callbacks: AudioManagerCallbacks) {
     this.callbacks = callbacks;
   }
 
   /**
+   * Synchronously initializes and unlocks the 24kHz speaker playback AudioContext
+   * during the user click gesture so the agent can speak immediately on session connect.
+   */
+  initPlayback(): void {
+    if (typeof window === 'undefined') return;
+    if (!this.playbackContext) {
+      const AudioCtx =
+        window.AudioContext ||
+        (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+      this.playbackContext = new AudioCtx({ sampleRate: OUTPUT_SAMPLE_RATE });
+    }
+    if (this.playbackContext.state === 'suspended') {
+      void this.playbackContext.resume().catch(() => undefined);
+    }
+  }
+
+  /**
    * Starts microphone capture and initializes playback AudioContext
    */
   async start(): Promise<void> {
+    this.initPlayback();
     if (this.isRunning) return;
 
     try {
@@ -184,7 +204,9 @@ export class LiveAudioManager {
         window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
 
       this.captureContext = new AudioCtx({ sampleRate: INPUT_SAMPLE_RATE });
-      this.playbackContext = new AudioCtx({ sampleRate: OUTPUT_SAMPLE_RATE });
+      if (!this.playbackContext) {
+        this.playbackContext = new AudioCtx({ sampleRate: OUTPUT_SAMPLE_RATE });
+      }
 
       if (this.captureContext.state === 'suspended') {
         await this.captureContext.resume();
@@ -247,6 +269,7 @@ export class LiveAudioManager {
 
       this.isRunning = true;
       this.isMuted = false;
+      this.micStartedAt = Date.now();
     } catch (err) {
       const error =
         err instanceof Error
@@ -260,8 +283,10 @@ export class LiveAudioManager {
   private handleCapturedPcmBuffer(pcmBuffer: ArrayBuffer, rms: number): void {
     this.callbacks.onMicLevelChange?.(rms);
 
+    const withinStartupGrace = Date.now() - this.micStartedAt < this.bargeInGracePeriodMs;
+
     // Client-side Voice Activity Detection (VAD) for responsive barge-in interruption
-    if (rms >= this.bargeInRmsThreshold) {
+    if (!withinStartupGrace && rms >= this.bargeInRmsThreshold) {
       this.consecutiveSpeechFrames++;
       this.silenceFrames = 0;
       if (this.consecutiveSpeechFrames >= this.bargeInRequiredFrames) {
@@ -269,7 +294,7 @@ export class LiveAudioManager {
           this.userSpeaking = true;
           this.callbacks.onUserSpeechStart?.();
         }
-        // If the agent is currently speaking and user speaks over them, trigger immediate barge-in
+        // If the agent is currently speaking and user speaks clearly over them, trigger barge-in
         if (this.isAgentPlaying) {
           this.clearPlaybackQueue();
         }

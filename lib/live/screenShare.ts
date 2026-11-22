@@ -18,6 +18,7 @@ export const CAPTURE_INTERVAL_MS = 1000; // 1 FPS
 
 export interface ScreenShareCallbacks {
   onFrame: (base64Jpeg: string, width: number, height: number) => void;
+  onFirstFrame?: (base64Jpeg: string, label: string) => void;
   onShareStarted?: (stream: MediaStream, label: string) => void;
   onShareStopped?: () => void;
   onError?: (error: Error) => void;
@@ -33,6 +34,8 @@ export class LiveScreenShareManager {
   private frameIntervalId: ReturnType<typeof setInterval> | null = null;
   private isSharing = false;
   private framesSentCount = 0;
+  private trackLabel = 'Chart Window';
+  private firstFrameEmitted = false;
 
   constructor(callbacks: ScreenShareCallbacks) {
     this.callbacks = callbacks;
@@ -60,19 +63,45 @@ export class LiveScreenShareManager {
     }
 
     try {
-      const stream = await navigator.mediaDevices.getDisplayMedia({
-        video: {
-          frameRate: 5,
-        },
-        audio: false,
-      });
+      if (!navigator.mediaDevices || typeof navigator.mediaDevices.getDisplayMedia !== 'function') {
+        throw new Error(
+          'Screen sharing (getDisplayMedia) is not supported in this browser context.'
+        );
+      }
+
+      let stream: MediaStream;
+      try {
+        stream = await navigator.mediaDevices.getDisplayMedia({
+          video: {
+            frameRate: { ideal: 5, max: 15 },
+            width: { ideal: 1280 },
+            height: { ideal: 720 },
+          },
+          audio: false,
+        });
+      } catch (constraintErr) {
+        // If user explicitly cancelled the permission dialog, rethrow immediately
+        if (
+          constraintErr instanceof DOMException &&
+          (constraintErr.name === 'NotAllowedError' || constraintErr.name === 'AbortError')
+        ) {
+          throw constraintErr;
+        }
+        // Fallback to basic video: true if advanced constraints were rejected
+        stream = await navigator.mediaDevices.getDisplayMedia({
+          video: true,
+          audio: false,
+        });
+      }
 
       this.displayStream = stream;
       this.isSharing = true;
       this.framesSentCount = 0;
+      this.firstFrameEmitted = false;
 
       const videoTrack = stream.getVideoTracks()[0];
       const trackLabel = videoTrack?.label || 'Chart Window';
+      this.trackLabel = trackLabel;
 
       // Gracefully handle browser's native "Stop Sharing" bar button without dropping the audio call
       if (videoTrack) {
@@ -89,15 +118,17 @@ export class LiveScreenShareManager {
         this.previewVideoEl.srcObject = stream;
         this.previewVideoEl.muted = true;
         this.previewVideoEl.playsInline = true;
-        await this.previewVideoEl.play().catch(() => undefined);
+        void this.previewVideoEl.play().catch(() => undefined);
       }
 
-      // Maintain an offscreen video element in case the preview box is collapsed or re-mounted
+      // Maintain an offscreen video element with explicit dimensions so frames decode reliably
       this.internalVideoEl = document.createElement('video');
+      this.internalVideoEl.width = 1280;
+      this.internalVideoEl.height = 720;
       this.internalVideoEl.srcObject = stream;
       this.internalVideoEl.muted = true;
       this.internalVideoEl.playsInline = true;
-      await this.internalVideoEl.play().catch(() => undefined);
+      this.internalVideoEl.autoplay = true;
 
       this.offscreenCanvas = document.createElement('canvas');
       this.offscreenCtx = this.offscreenCanvas.getContext('2d', {
@@ -106,12 +137,23 @@ export class LiveScreenShareManager {
 
       this.callbacks.onShareStarted?.(stream, trackLabel);
 
-      // Immediately capture an initial frame once metadata is ready, then run at 1 FPS (1000ms)
-      setTimeout(() => {
-        if (this.isSharing) {
-          this.captureAndSendFrame();
-        }
-      }, 250);
+      await this.internalVideoEl.play().catch(() => undefined);
+
+      // Capture initial frame as soon as video frame data is available
+      if (this.internalVideoEl.readyState >= 2) {
+        this.captureAndSendFrame();
+      } else {
+        this.internalVideoEl.onloadeddata = () => {
+          if (this.isSharing) {
+            this.captureAndSendFrame();
+          }
+        };
+        setTimeout(() => {
+          if (this.isSharing && this.framesSentCount === 0) {
+            this.captureAndSendFrame();
+          }
+        }, 250);
+      }
 
       this.frameIntervalId = setInterval(() => {
         this.captureAndSendFrame();
@@ -120,8 +162,14 @@ export class LiveScreenShareManager {
       return stream;
     } catch (err) {
       this.isSharing = false;
-      const error =
-        err instanceof Error ? err : new Error('Screen sharing was cancelled or blocked.');
+      const isCancelled =
+        err instanceof DOMException &&
+        (err.name === 'NotAllowedError' || err.name === 'AbortError');
+      const error = isCancelled
+        ? new Error('Screen share selection was cancelled. Click "Share Screen" whenever you are ready to pick a window or tab.')
+        : err instanceof Error
+        ? err
+        : new Error('Screen sharing was cancelled or blocked.');
       this.callbacks.onError?.(error);
       throw error;
     }
@@ -163,6 +211,10 @@ export class LiveScreenShareManager {
 
     this.framesSentCount++;
     this.callbacks.onFrame(base64Jpeg, targetWidth, targetHeight);
+    if (!this.firstFrameEmitted) {
+      this.firstFrameEmitted = true;
+      this.callbacks.onFirstFrame?.(base64Jpeg, this.trackLabel);
+    }
   }
 
   getIsSharing(): boolean {

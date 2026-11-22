@@ -40,6 +40,26 @@ export interface TranscriptEntry {
   toolName?: string;
 }
 
+interface PrefetchedLiveTokenData {
+  token: string;
+  apiVersion?: string;
+  model?: string;
+  fallbackModel?: string;
+  sessionConfig?: {
+    systemInstruction?: string;
+    tools?: Array<Record<string, unknown>>;
+  };
+  fetchedAt: number;
+}
+
+const PREFETCH_TTL_MS = 2.5 * 60 * 1000;
+
+export const AGENT_INTRO_PROMPT =
+  'Hello! Please greet the trader right now out loud: introduce yourself by name ("Hi, I\'m Apex, your Apex Vision AI Live SMC Trading Co-Pilot"), briefly explain what you do (analyzing live shared trading charts for Smart Money Concepts like Order Blocks, Fair Value Gaps, Break of Structure, and liquidity sweeps, verifying multi-timeframe quantitative structure, and checking red-folder macro news), and invite them to share their screen or ask about any market setup.';
+
+export const AGENT_INTRO_FALLBACK_TEXT =
+  "Hi, I'm Apex, your Apex Vision AI Live SMC Trading Co-Pilot. I analyze your live shared trading charts in real time for Smart Money Concepts—including Order Blocks, Fair Value Gaps, Break of Structure, and liquidity sweeps—while verifying multi-timeframe market data and red-folder macro news. Share your screen anytime or ask me about any setup!";
+
 interface GoLiveModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -70,6 +90,106 @@ export default function GoLiveModal({
   const previewVideoRef = useRef<HTMLVideoElement | null>(null);
   const transcriptEndRef = useRef<HTMLDivElement | null>(null);
   const isConnectedRef = useRef<boolean>(false);
+  const isConnectingRef = useRef<boolean>(false);
+  const prefetchedTokenRef = useRef<PrefetchedLiveTokenData | null>(null);
+  const prefetchPromiseRef = useRef<Promise<PrefetchedLiveTokenData | null> | null>(null);
+  const pendingFirstFrameRef = useRef<{ base64Jpeg: string; label: string } | null>(null);
+  const receivedAudioInTurnRef = useRef<boolean>(false);
+  const currentTurnAgentTextRef = useRef<string>('');
+  const autoStartedOnOpenRef = useRef<boolean>(false);
+
+  const speakWithBrowserTtsFallback = useCallback(
+    (text: string) => {
+      if (typeof window === 'undefined' || !('speechSynthesis' in window)) return;
+      const cleaned = text.trim();
+      if (!cleaned) return;
+      try {
+        window.speechSynthesis.cancel();
+        const utterance = new SpeechSynthesisUtterance(cleaned);
+        utterance.rate = 1.04;
+        utterance.pitch = 1.0;
+        utterance.onstart = () => {
+          if (isConnectedRef.current) {
+            setStatus('Agent Speaking');
+            onConnectionStateChange?.(true, 'Agent Speaking');
+          }
+        };
+        utterance.onend = () => {
+          if (isConnectedRef.current) {
+            setStatus('Live — Listening');
+            onConnectionStateChange?.(true, 'Live — Listening');
+          }
+        };
+        window.speechSynthesis.speak(utterance);
+      } catch {
+        // ignore browser speech synthesis errors
+      }
+    },
+    [onConnectionStateChange]
+  );
+
+  /**
+   * Pre-fetches the ephemeral Gemini Live token in the background so clicking
+   * "Go Live" or "Start Live Session" connects immediately without waiting on token minting.
+   */
+  const prefetchLiveToken = useCallback(
+    async (forceRefresh = false): Promise<PrefetchedLiveTokenData | null> => {
+      const now = Date.now();
+      if (
+        !forceRefresh &&
+        prefetchedTokenRef.current &&
+        now - prefetchedTokenRef.current.fetchedAt < PREFETCH_TTL_MS
+      ) {
+        return prefetchedTokenRef.current;
+      }
+
+      if (!forceRefresh && prefetchPromiseRef.current) {
+        return prefetchPromiseRef.current;
+      }
+
+      const promise = (async () => {
+        try {
+          const url = forceRefresh ? '/api/live-token?refresh=1' : '/api/live-token';
+          const res = await fetch(url, { method: 'GET', cache: 'no-store' });
+          const data = await res.json();
+          if (!res.ok || !data?.token) {
+            return null;
+          }
+          const payload: PrefetchedLiveTokenData = {
+            token: data.token,
+            apiVersion: data.apiVersion || 'v1alpha',
+            model: data.model || 'gemini-3.8-live',
+            fallbackModel: data.fallbackModel || 'gemini-3.1-flash-live-preview',
+            sessionConfig: data.sessionConfig || {},
+            fetchedAt: Date.now(),
+          };
+          prefetchedTokenRef.current = payload;
+          return payload;
+        } catch {
+          return null;
+        } finally {
+          prefetchPromiseRef.current = null;
+        }
+      })();
+
+      prefetchPromiseRef.current = promise;
+      return promise;
+    },
+    []
+  );
+
+  // Warm the ephemeral token on initial page mount and whenever the drawer is opened
+  useEffect(() => {
+    void prefetchLiveToken(false);
+  }, [prefetchLiveToken]);
+
+  useEffect(() => {
+    if (isOpen) {
+      void prefetchLiveToken(false);
+    } else {
+      autoStartedOnOpenRef.current = false;
+    }
+  }, [isOpen, prefetchLiveToken]);
 
   const updateStatus = useCallback(
     (nextStatus: LiveConnectionStatus, connected: boolean) => {
@@ -216,6 +336,11 @@ export default function GoLiveModal({
         // 1. Interruption / Barge-in signal
         if (content.interrupted) {
           audioManagerRef.current?.clearPlaybackQueue();
+          if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+            window.speechSynthesis.cancel();
+          }
+          receivedAudioInTurnRef.current = false;
+          currentTurnAgentTextRef.current = '';
           if (isConnectedRef.current) {
             updateStatus('Live — Listening', true);
           }
@@ -225,9 +350,14 @@ export default function GoLiveModal({
         if (content.modelTurn?.parts) {
           for (const part of content.modelTurn.parts) {
             if (part.inlineData?.data) {
+              receivedAudioInTurnRef.current = true;
+              if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+                window.speechSynthesis.cancel();
+              }
               audioManagerRef.current?.enqueuePlaybackPcm24k(part.inlineData.data);
             }
             if (part.text && !content.outputTranscription) {
+              currentTurnAgentTextRef.current += ` ${part.text}`;
               appendOrMergeTranscript('agent', part.text);
             }
           }
@@ -238,16 +368,26 @@ export default function GoLiveModal({
           appendOrMergeTranscript('user', content.inputTranscription.text);
         }
         if (content.outputTranscription?.text) {
+          currentTurnAgentTextRef.current += ` ${content.outputTranscription.text}`;
           appendOrMergeTranscript('agent', content.outputTranscription.text);
+        }
+
+        // 4. If a turn finished with text only and no raw PCM audio was streamed, speak via browser TTS fallback
+        if (content.turnComplete) {
+          if (!receivedAudioInTurnRef.current && currentTurnAgentTextRef.current.trim()) {
+            speakWithBrowserTtsFallback(currentTurnAgentTextRef.current);
+          }
+          receivedAudioInTurnRef.current = false;
+          currentTurnAgentTextRef.current = '';
         }
       }
 
-      // 4. Real-Time Quantitative Function Calling
+      // 5. Real-Time Quantitative Function Calling
       if (message.toolCall?.functionCalls && message.toolCall.functionCalls.length > 0) {
         void handleServerToolCall(message);
       }
     },
-    [appendOrMergeTranscript, handleServerToolCall, updateStatus]
+    [appendOrMergeTranscript, handleServerToolCall, speakWithBrowserTtsFallback, updateStatus]
   );
 
   /**
@@ -255,6 +395,11 @@ export default function GoLiveModal({
    */
   const endLiveSession = useCallback(() => {
     isConnectedRef.current = false;
+    isConnectingRef.current = false;
+
+    if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+      window.speechSynthesis.cancel();
+    }
 
     if (screenManagerRef.current) {
       screenManagerRef.current.stop();
@@ -285,26 +430,84 @@ export default function GoLiveModal({
 
   /**
    * Connects to Gemini Live API (`gemini-3.8-live` with automatic fallback to `gemini-3.1-flash-live-preview`)
-   * using a short-lived ephemeral token from `/api/live-token` and starts 16kHz mic capture.
+   * using a pre-warmed ephemeral token from `/api/live-token`, unlocks 24kHz audio output synchronously,
+   * starts 16kHz mic capture in parallel, and prompts the agent to speak its introduction immediately.
    */
   const startLiveSession = useCallback(async () => {
-    if (status === 'Connecting' || isConnectedRef.current) return;
+    if (isConnectingRef.current || isConnectedRef.current) return;
 
+    isConnectingRef.current = true;
     setErrorMessage('');
     updateStatus('Connecting', false);
 
-    try {
-      // 1. Fetch ephemeral token & session config from backend
-      const tokenRes = await fetch('/api/live-token', {
-        method: 'GET',
-        cache: 'no-store',
-      });
-      const tokenData = await tokenRes.json();
+    // 1. Initialize and unlock 24kHz speaker playback synchronously on the user gesture
+    const audioManager = new LiveAudioManager({
+      onAudioChunk: (base64Pcm16k) => {
+        if (!sessionRef.current || !isConnectedRef.current) return;
+        try {
+          sessionRef.current.sendRealtimeInput({
+            audio: {
+              data: base64Pcm16k,
+              mimeType: 'audio/pcm;rate=16000',
+            },
+          });
+        } catch (sendErr) {
+          console.warn('Error streaming audio chunk:', sendErr);
+        }
+      },
+      onUserSpeechStart: () => {
+        if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+          window.speechSynthesis.cancel();
+        }
+        if (isConnectedRef.current) {
+          updateStatus('Live — Listening', true);
+        }
+      },
+      onUserSpeechEnd: () => {
+        if (!sessionRef.current || !isConnectedRef.current) return;
+        try {
+          sessionRef.current.sendRealtimeInput({
+            audioStreamEnd: true,
+          });
+        } catch {
+          // ignore
+        }
+      },
+      onAgentPlaybackChange: (isPlaying) => {
+        if (!isConnectedRef.current) return;
+        updateStatus(isPlaying ? 'Agent Speaking' : 'Live — Listening', true);
+      },
+      onMicLevelChange: (rms) => {
+        setMicLevel(Math.min(1, rms * 8));
+      },
+      onError: () => {
+        // Handled non-fatally below so speaker + screen share stay active even without a mic
+      },
+    });
 
-      if (!tokenRes.ok || !tokenData?.token) {
-        throw new Error(
-          tokenData?.message || 'Unable to initialize ephemeral Gemini Live session token.'
-        );
+    audioManager.initPlayback();
+    audioManagerRef.current = audioManager;
+
+    // Start microphone capture in parallel (non-blocking & non-fatal if mic is unavailable)
+    const micStartPromise = audioManager
+      .start()
+      .then(() => {
+        setIsMuted(false);
+      })
+      .catch((micErr) => {
+        console.warn('Microphone unavailable, continuing with speaker + screen share:', micErr);
+        setIsMuted(true);
+      });
+
+    try {
+      // 2. Use pre-warmed ephemeral token (or fetch immediately if not cached yet)
+      let tokenData = await prefetchLiveToken(false);
+      if (!tokenData?.token) {
+        tokenData = await prefetchLiveToken(true);
+      }
+
+      if (!tokenData?.token) {
+        throw new Error('Unable to initialize ephemeral Gemini Live session token.');
       }
 
       const ephemeralToken: string = tokenData.token;
@@ -312,7 +515,7 @@ export default function GoLiveModal({
       const fallbackModel: string = tokenData.fallbackModel || 'gemini-3.1-flash-live-preview';
       const sessionConfig = tokenData.sessionConfig || {};
 
-      // 2. Initialize GoogleGenAI client with the ephemeral token (v1alpha required for ephemeral tokens)
+      // 3. Connect to Gemini Live WebSocket
       const ai = new GoogleGenAI({
         apiKey: ephemeralToken,
         httpOptions: { apiVersion: tokenData.apiVersion || 'v1alpha' },
@@ -324,9 +527,9 @@ export default function GoLiveModal({
           config: {
             responseModalities: [Modality.AUDIO],
             systemInstruction: {
-              parts: [{ text: sessionConfig.systemInstruction }],
+              parts: [{ text: sessionConfig.systemInstruction || '' }],
             },
-            tools: sessionConfig.tools,
+            tools: sessionConfig.tools as never,
             inputAudioTranscription: {},
             outputAudioTranscription: {},
           },
@@ -365,72 +568,86 @@ export default function GoLiveModal({
 
       sessionRef.current = liveSession;
       isConnectedRef.current = true;
+      isConnectingRef.current = false;
       updateStatus('Live — Listening', true);
 
-      // 3. Start Two-Way Audio Engine (16kHz PCM mic capture + 24kHz PCM speaker queue)
-      const audioManager = new LiveAudioManager({
-        onAudioChunk: (base64Pcm16k) => {
-          if (!sessionRef.current || !isConnectedRef.current) return;
-          try {
-            sessionRef.current.sendRealtimeInput({
-              audio: {
-                data: base64Pcm16k,
-                mimeType: 'audio/pcm;rate=16000',
-              },
-            });
-          } catch (sendErr) {
-            console.warn('Error streaming audio chunk:', sendErr);
-          }
-        },
-        onUserSpeechStart: () => {
-          // User started speaking — barge-in clears playback queue automatically in audioManager
-          if (isConnectedRef.current) {
-            updateStatus('Live — Listening', true);
-          }
-        },
-        onUserSpeechEnd: () => {
-          if (!sessionRef.current || !isConnectedRef.current) return;
-          try {
-            sessionRef.current.sendRealtimeInput({
-              audioStreamEnd: true,
-            });
-          } catch {
-            // ignore
-          }
-        },
-        onAgentPlaybackChange: (isPlaying) => {
-          if (!isConnectedRef.current) return;
-          updateStatus(isPlaying ? 'Agent Speaking' : 'Live — Listening', true);
-        },
-        onMicLevelChange: (rms) => {
-          setMicLevel(Math.min(1, rms * 8));
-        },
-        onError: (err) => {
-          setErrorMessage(err.message);
-        },
-      });
+      // 4. Immediately trigger the agent's spoken introduction (name + what it does + screen share invite)
+      receivedAudioInTurnRef.current = false;
+      currentTurnAgentTextRef.current = '';
 
-      audioManagerRef.current = audioManager;
-      await audioManager.start();
+      try {
+        // If user already started sharing their screen before/during connection, stream the first frame and introduce + read screen
+        if (pendingFirstFrameRef.current) {
+          const { base64Jpeg, label } = pendingFirstFrameRef.current;
+          pendingFirstFrameRef.current = null;
+          liveSession.sendRealtimeInput({
+            video: {
+              data: base64Jpeg,
+              mimeType: 'image/jpeg',
+            },
+          });
+          liveSession.sendRealtimeInput({
+            text: `${AGENT_INTRO_PROMPT} The trader is also already sharing their screen (${label})—after introducing yourself, briefly mention what you see on their shared screen.`,
+          });
+        } else {
+          liveSession.sendRealtimeInput({
+            text: AGENT_INTRO_PROMPT,
+          });
+        }
+      } catch (introErr) {
+        console.warn('Fallback spoken introduction:', introErr);
+        appendOrMergeTranscript('agent', AGENT_INTRO_FALLBACK_TEXT);
+        speakWithBrowserTtsFallback(AGENT_INTRO_FALLBACK_TEXT);
+      }
 
-      appendOrMergeTranscript(
-        'agent',
-        'Live co-pilot connected. Share your chart screen or ask me to check live structure, bias, or red-folder news.'
-      );
+      void micStartPromise;
     } catch (err) {
+      isConnectingRef.current = false;
       const msg =
         err instanceof Error ? err.message : 'Failed to connect to Gemini Live Co-Pilot.';
       setErrorMessage(msg);
       endLiveSession();
       updateStatus('Error', false);
     }
-  }, [appendOrMergeTranscript, endLiveSession, handleServerMessage, status, updateStatus]);
+  }, [
+    appendOrMergeTranscript,
+    endLiveSession,
+    handleServerMessage,
+    prefetchLiveToken,
+    speakWithBrowserTtsFallback,
+    updateStatus,
+  ]);
+
+  // Auto-start the live session immediately when the user opens the Go Live modal
+  useEffect(() => {
+    if (
+      isOpen &&
+      !autoStartedOnOpenRef.current &&
+      status === 'Idle' &&
+      !isConnectedRef.current &&
+      !isConnectingRef.current
+    ) {
+      autoStartedOnOpenRef.current = true;
+      void startLiveSession();
+    }
+  }, [isOpen, startLiveSession, status]);
 
   /**
-   * Toggle Microphone Mute / Unmute
+   * Toggle Microphone Mute / Unmute (or re-request mic permission if previously unavailable)
    */
-  const handleToggleMute = () => {
+  const handleToggleMute = async () => {
     if (!audioManagerRef.current) return;
+    if (isMuted) {
+      try {
+        await audioManagerRef.current.start();
+        audioManagerRef.current.setMuted(false);
+        setIsMuted(false);
+        return;
+      } catch {
+        setErrorMessage('Microphone access is blocked or unavailable. Check browser mic permissions.');
+        return;
+      }
+    }
     const nextMuted = !isMuted;
     audioManagerRef.current.setMuted(nextMuted);
     setIsMuted(nextMuted);
@@ -444,7 +661,9 @@ export default function GoLiveModal({
   };
 
   /**
-   * Toggle 1 FPS Live Screen Sharing for TradingView / MetaTrader 5 / Browser Chart analysis
+   * Toggle 1 FPS Live Screen Sharing for TradingView / MetaTrader 5 / Browser Chart analysis.
+   * Can be clicked before or during a live session—if the session is not yet connected,
+   * it captures the screen immediately inside the user gesture and connects the live session in parallel.
    */
   const handleToggleScreenShare = async () => {
     if (isScreenSharing && screenManagerRef.current) {
@@ -471,6 +690,25 @@ export default function GoLiveModal({
               console.warn('Error sending 1 FPS screen frame:', err);
             }
           },
+          onFirstFrame: (base64Jpeg, label) => {
+            if (sessionRef.current && isConnectedRef.current) {
+              try {
+                sessionRef.current.sendRealtimeInput({
+                  video: {
+                    data: base64Jpeg,
+                    mimeType: 'image/jpeg',
+                  },
+                });
+                sessionRef.current.sendRealtimeInput({
+                  text: `[Screen Share Started: ${label}] I am now sharing my screen with you. Briefly confirm out loud that you can see my shared screen and tell me what chart, asset, or price action is visible.`,
+                });
+              } catch (err) {
+                console.warn('Error notifying agent of first screen frame:', err);
+              }
+            } else {
+              pendingFirstFrameRef.current = { base64Jpeg, label };
+            }
+          },
           onShareStarted: (_stream, label) => {
             setIsScreenSharing(true);
             setScreenLabel(label || 'Chart Window');
@@ -485,7 +723,13 @@ export default function GoLiveModal({
         });
       }
 
+      // Request screen share immediately in the user click gesture
       await screenManagerRef.current.start(previewVideoRef.current);
+
+      // If the live session isn't connected yet, start it automatically so the agent can view & discuss the shared screen
+      if (!isConnectedRef.current && !isConnectingRef.current) {
+        void startLiveSession();
+      }
     } catch {
       // Error already surfaced via callback
     }
@@ -685,17 +929,35 @@ export default function GoLiveModal({
             </div>
           )}
 
-          {/* Primary Controls: Start Session OR Mic (Mute/Unmute), Share Screen (Start/Stop), End Session */}
+          {/* Primary Controls: Start Session, Share Screen (Always enabled!), Mic (Mute/Unmute), End Session */}
           <div className="saas-card rounded-2xl p-4 space-y-3">
             {!isLiveActive && status !== 'Connecting' ? (
-              <button
-                type="button"
-                onClick={startLiveSession}
-                className="btn-royal-primary flex w-full items-center justify-center gap-2.5 rounded-xl px-5 py-3.5 text-sm font-bold shadow-saas-btn"
-              >
-                <Radio className="h-4 w-4" />
-                <span>Start Live Voice &amp; Screen Session</span>
-              </button>
+              <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
+                <button
+                  type="button"
+                  onClick={startLiveSession}
+                  className="btn-royal-primary flex items-center justify-center gap-2 rounded-xl px-4 py-3.5 text-xs font-bold shadow-saas-btn sm:text-sm"
+                >
+                  <Radio className="h-4 w-4" />
+                  <span>Start Live Voice Session</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={handleToggleScreenShare}
+                  className={`flex items-center justify-center gap-2 rounded-xl border px-4 py-3.5 text-xs font-bold transition sm:text-sm ${
+                    isScreenSharing
+                      ? 'border-[#1D4ED8] bg-[#1D4ED8] text-white hover:bg-[#1E40AF]'
+                      : 'border-[#1D4ED8] bg-[#EFF6FF] text-[#1D4ED8] hover:bg-[#DBEAFE]'
+                  }`}
+                >
+                  {isScreenSharing ? (
+                    <MonitorOff className="h-4 w-4" />
+                  ) : (
+                    <Monitor className="h-4 w-4" />
+                  )}
+                  <span>{isScreenSharing ? 'Stop Sharing Screen' : 'Share Screen & Go Live'}</span>
+                </button>
+              </div>
             ) : (
               <div className="grid grid-cols-3 gap-2.5">
                 {/* Mic Mute / Unmute Toggle */}
@@ -713,16 +975,15 @@ export default function GoLiveModal({
                   <span>{isMuted ? 'Unmute Mic' : 'Mute Mic'}</span>
                 </button>
 
-                {/* Share Screen Start / Stop Toggle */}
+                {/* Share Screen Start / Stop Toggle — Always clickable even while connecting */}
                 <button
                   type="button"
                   onClick={handleToggleScreenShare}
-                  disabled={!isLiveActive}
                   className={`flex flex-col items-center justify-center gap-1.5 rounded-xl border px-3 py-3 text-xs font-bold transition ${
                     isScreenSharing
                       ? 'border-[#1D4ED8] bg-[#1D4ED8] text-white hover:bg-[#1E40AF]'
                       : 'border-[#CBD5E1] bg-white text-[#0F172A] hover:border-[#1D4ED8] hover:bg-[#EFF6FF] hover:text-[#1D4ED8]'
-                  } disabled:opacity-50`}
+                  }`}
                 >
                   {isScreenSharing ? (
                     <MonitorOff className="h-4 w-4" />
@@ -752,10 +1013,10 @@ export default function GoLiveModal({
                 </p>
                 <div className="flex flex-wrap gap-1.5">
                   {[
+                    'Introduce yourself and tell me what you do',
+                    'Analyze the chart structure on my shared screen',
                     'Verify the 4H bias on Gold',
                     'Check if there is red-folder USD news right now',
-                    'Fetch live multi-timeframe market data on XAUUSD',
-                    'Analyze the chart structure on my shared screen',
                   ].map((prompt) => (
                     <button
                       key={prompt}
@@ -786,11 +1047,34 @@ export default function GoLiveModal({
                 )}
               </div>
 
-              {isScreenSharing && (
-                <span className="truncate max-w-[160px] font-mono text-[10px] font-semibold text-[#475569]">
-                  {screenLabel}
-                </span>
-              )}
+              <div className="flex items-center gap-2">
+                {isScreenSharing && (
+                  <span className="truncate max-w-[140px] font-mono text-[10px] font-semibold text-[#475569]">
+                    {screenLabel}
+                  </span>
+                )}
+                <button
+                  type="button"
+                  onClick={handleToggleScreenShare}
+                  className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-[11px] font-bold transition ${
+                    isScreenSharing
+                      ? 'border-[#FECACA] bg-[#FEF2F2] text-[#EF4444] hover:bg-[#FEE2E2]'
+                      : 'border-[#1D4ED8] bg-[#EFF6FF] text-[#1D4ED8] hover:bg-[#1D4ED8] hover:text-white'
+                  }`}
+                >
+                  {isScreenSharing ? (
+                    <>
+                      <MonitorOff className="h-3 w-3" />
+                      <span>Stop</span>
+                    </>
+                  ) : (
+                    <>
+                      <Monitor className="h-3 w-3" />
+                      <span>Share Screen</span>
+                    </>
+                  )}
+                </button>
+              </div>
             </div>
 
             <div className="relative flex min-h-[190px] items-center justify-center bg-[#0F172A] p-2">
@@ -805,7 +1089,7 @@ export default function GoLiveModal({
               />
 
               {!isScreenSharing && (
-                <div className="flex flex-col items-center justify-center px-6 py-8 text-center">
+                <div className="flex flex-col items-center justify-center px-6 py-6 text-center">
                   <div className="mb-2.5 flex h-11 w-11 items-center justify-center rounded-xl border border-[#1E293B] bg-[#1E293B]/80 text-[#93C5FD]">
                     <Monitor className="h-5 w-5" />
                   </div>
@@ -813,8 +1097,16 @@ export default function GoLiveModal({
                     No chart window shared yet
                   </p>
                   <p className="mt-1 max-w-xs text-[11px] text-[#94A3B8]">
-                    Click &ldquo;Share Screen&rdquo; during a live call to stream your TradingView or MetaTrader 5 chart at 1 FPS.
+                    Share your TradingView, MetaTrader 5, or browser chart window so Apex can see your screen in real time at 1 FPS.
                   </p>
+                  <button
+                    type="button"
+                    onClick={handleToggleScreenShare}
+                    className="mt-3.5 inline-flex items-center gap-2 rounded-xl bg-[#1D4ED8] px-4 py-2 text-xs font-bold text-white shadow-saas-sm transition hover:bg-[#2563EB]"
+                  >
+                    <Monitor className="h-3.5 w-3.5" />
+                    <span>Share Screen Now</span>
+                  </button>
                 </div>
               )}
             </div>
