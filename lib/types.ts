@@ -100,7 +100,18 @@ export interface AccuracyVerification {
   verification_checks: string[];
 }
 
-export type ForecastTimeframe = '5M' | '15M' | '1H' | '4H';
+export type ForecastTimeframe = '1M' | '5M' | '15M' | '30M' | '1H' | '4H' | '1D' | '1W';
+
+export const FORECAST_TIMEFRAMES: ForecastTimeframe[] = [
+  '1M',
+  '5M',
+  '15M',
+  '30M',
+  '1H',
+  '4H',
+  '1D',
+  '1W',
+];
 
 export interface ForecastHistoricalCandle {
   time: number;
@@ -129,7 +140,9 @@ export type MultiTimeframeForecast = {
 
 export interface InstitutionalSMCAnalysis {
   asset: string;
+  detectedAsset?: string;
   timeframe: string;
+  detectedTimeframe?: string;
   chart_type?: ChartType;
   analysis_mode?: AnalysisMode;
   bias: MarketBias;

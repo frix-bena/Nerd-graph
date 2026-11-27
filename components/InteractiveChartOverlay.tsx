@@ -144,7 +144,7 @@ export default function InteractiveChartOverlay({
     label: pt.label ?? pt.note ?? '',
   }));
 
-  const priceLines = [
+  const rawPriceLines = [
     ...(tp3Price > 0
       ? [
           {
@@ -211,6 +211,61 @@ export default function InteractiveChartOverlay({
       badgeText: '#EF4444',
     },
   ];
+
+  // Vertical collision-avoidance for price badges so ENTRY / SL / TP badges never overlap
+  const priceLines = (() => {
+    const sorted = [...rawPriceLines]
+      .map((line) => ({
+        ...line,
+        clampedY: Math.min(95, Math.max(5, line.yPercent)),
+        badgeYPercent: Math.min(95, Math.max(5, line.yPercent)),
+      }))
+      .sort((a, b) => a.clampedY - b.clampedY);
+
+    const minGap = 5.5;
+    for (let i = 1; i < sorted.length; i++) {
+      if (sorted[i].badgeYPercent - sorted[i - 1].badgeYPercent < minGap) {
+        sorted[i].badgeYPercent = Math.min(96, sorted[i - 1].badgeYPercent + minGap);
+      }
+    }
+    return sorted;
+  })();
+
+  // Vertical & horizontal collision-avoidance between RESISTANCE / zone labels and ENTRY / SL / TP price badges
+  const deconflictedZones = (() => {
+    const occupiedY: number[] = priceLines.flatMap((l) => [l.clampedY, l.badgeYPercent]);
+    return zones.map((zone) => {
+      const left = Math.min(zone.x_start, zone.x_end);
+      const top = Math.min(zone.y_start, zone.y_end);
+      const bottom = Math.max(zone.y_start, zone.y_end);
+      const safeLeft = Math.min(52, Math.max(2, left));
+
+      let badgeTop = Math.min(93, Math.max(5, top));
+      const collides = (candidateY: number) =>
+        occupiedY.some((occ) => Math.abs(candidateY - occ) < 5.2);
+
+      if (collides(badgeTop)) {
+        const candidates = [
+          Math.max(5, top - 4.8),
+          Math.min(93, bottom + 3.2),
+          Math.max(5, top - 8.5),
+          Math.min(93, top + 5.2),
+        ];
+        const found = candidates.find((c) => !collides(c));
+        if (found !== undefined) {
+          badgeTop = found;
+        } else {
+          badgeTop = Math.max(5, Math.min(93, top - 4.5));
+        }
+      }
+      occupiedY.push(badgeTop);
+      return {
+        ...zone,
+        badgeLeft: safeLeft,
+        badgeTop,
+      };
+    });
+  })();
 
   useEffect(() => {
     if (!isLightboxOpen) return;
@@ -593,34 +648,32 @@ export default function InteractiveChartOverlay({
           )}
         </svg>
 
-        {/* Crisp HTML Badges for Zones */}
+        {/* Crisp HTML Badges for Zones (z-20 with vertical collision-avoidance offset) */}
         {showZones &&
-          zones.map((zone, idx) => {
-            const left = Math.min(zone.x_start, zone.x_end);
-            const top = Math.min(zone.y_start, zone.y_end);
+          deconflictedZones.map((zone, idx) => {
             const styles = getZoneStyles(zone.type);
 
             return (
               <div
                 key={`zone-badge-${zone.type}-${idx}`}
                 style={{
-                  left: `${left}%`,
-                  top: `${top}%`,
+                  left: `${zone.badgeLeft}%`,
+                  top: `${zone.badgeTop}%`,
                 }}
-                className="absolute -translate-y-2.5 translate-x-1"
+                className="absolute z-20 -translate-y-1/2 translate-x-1 max-w-[58%]"
               >
                 <span
-                  className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] sm:text-[10px] font-mono font-bold border shadow-sm whitespace-nowrap ${styles.badge}`}
+                  className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] sm:text-[10px] font-mono font-bold border shadow-sm truncate max-w-full ${styles.badge}`}
                 >
                   <span>{zone.type}</span>
                   <span className="opacity-75">·</span>
-                  <span>{zone.label}</span>
+                  <span className="truncate">{zone.label}</span>
                 </span>
               </div>
             );
           })}
 
-        {/* Crisp HTML Nodes & Labels for Prediction Path */}
+        {/* Crisp HTML Nodes & Labels for Prediction Path (z-[25]) */}
         {showPath &&
           predictionPath.length >= 2 &&
           predictionPath.map((pt, idx) => (
@@ -630,7 +683,7 @@ export default function InteractiveChartOverlay({
                 left: `${pt.x}%`,
                 top: `${pt.y}%`,
               }}
-              className="absolute -translate-x-1/2 -translate-y-1/2 flex flex-col items-center"
+              className="absolute z-[25] -translate-x-1/2 -translate-y-1/2 flex flex-col items-center"
             >
               <span className="w-2.5 h-2.5 rounded-full bg-[#F59E0B] border-2 border-[#0F172A] shadow" />
               {pt.label && (
@@ -641,12 +694,12 @@ export default function InteractiveChartOverlay({
             </div>
           ))}
 
-        {/* Crisp Right-Aligned Price Badges for Entry, Stop Loss, TP1, TP2 */}
+        {/* Crisp Right-Aligned Price Badges for Entry, Stop Loss, TP1, TP2, TP3 (z-30 with vertical collision-avoidance) */}
         {priceLines.map((line) => (
           <div
             key={`badge-${line.id}`}
-            style={{ top: `${Math.min(96, Math.max(4, line.yPercent))}%` }}
-            className="absolute right-2 sm:right-3 -translate-y-1/2 flex items-center"
+            style={{ top: `${line.badgeYPercent}%` }}
+            className="absolute right-2 sm:right-3 z-30 -translate-y-1/2 flex items-center"
           >
             <span
               className={`px-2 py-0.5 rounded-md border font-mono text-[10px] sm:text-[11px] font-bold shadow-sm flex items-center gap-1 whitespace-nowrap ${line.badgeClass}`}

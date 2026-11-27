@@ -166,8 +166,9 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const resolvedAsset = result.asset || data.asset?.trim() || 'XAUUSD';
-    const resolvedTimeframe = result.timeframe || data.timeframe?.trim() || '15M';
+    const resolvedAsset = result.detectedAsset || result.asset || data.asset?.trim() || 'XAUUSD';
+    const resolvedTimeframe =
+      result.detectedTimeframe || result.timeframe || data.timeframe?.trim() || '15M';
     const activeSession = detectSessionAndLiquiditySweep([], 2);
 
     if (!validAnalysis(result)) {
@@ -182,7 +183,9 @@ export async function POST(request: NextRequest) {
 
     const analysis: TradeAnalysis = {
       asset: resolvedAsset,
+      detectedAsset: resolvedAsset,
       timeframe: resolvedTimeframe,
+      detectedTimeframe: resolvedTimeframe,
       chart_type: result.chart_type,
       analysis_mode: result.analysis_mode,
       bias: result.bias,
@@ -286,6 +289,8 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({
       success: true,
+      detectedAsset: analysis.asset,
+      detectedTimeframe: analysis.timeframe,
       analysis,
       multiTimeframeForecast: analysis.multiTimeframeForecast,
       signalId,

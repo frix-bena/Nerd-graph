@@ -1,10 +1,11 @@
 'use client';
 
-import React, { useState, useMemo, useCallback } from 'react';
+import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import {
   ForecastHistoricalCandle,
   ForecastProjectedPoint,
   ForecastTimeframe,
+  FORECAST_TIMEFRAMES,
   MultiTimeframeForecast,
   SMCSignalOutput,
   TimeframeForecastProjection,
@@ -12,11 +13,9 @@ import {
 } from '@/lib/types';
 import { getAssetDecimals } from '@/lib/tools/marketData';
 import {
-  Activity,
   BarChart3,
   Camera,
   CheckCircle2,
-  Crosshair,
   Download,
   GitCommit,
   TrendingDown,
@@ -27,7 +26,7 @@ interface MultiTimeframeProjectionChartProps {
   signal: SMCSignalOutput;
 }
 
-const TIMEFRAMES: ForecastTimeframe[] = ['5M', '15M', '1H', '4H'];
+const TIMEFRAMES: ForecastTimeframe[] = FORECAST_TIMEFRAMES;
 
 function roundPrice(val: number, decimals: number): number {
   const factor = Math.pow(10, decimals);
@@ -50,10 +49,14 @@ function buildFallbackForecast(signal: SMCSignalOutput): MultiTimeframeForecast 
   const nowSec = Math.floor(Date.now() / 1000);
 
   const configs: { tf: ForecastTimeframe; stepSec: number; mult: number }[] = [
+    { tf: '1M', stepSec: 60, mult: 0.35 },
     { tf: '5M', stepSec: 300, mult: 0.65 },
     { tf: '15M', stepSec: 900, mult: 1.0 },
+    { tf: '30M', stepSec: 1800, mult: 1.22 },
     { tf: '1H', stepSec: 3600, mult: 1.45 },
     { tf: '4H', stepSec: 14400, mult: 2.1 },
+    { tf: '1D', stepSec: 86400, mult: 3.6 },
+    { tf: '1W', stepSec: 604800, mult: 6.2 },
   ];
 
   const out = {} as MultiTimeframeForecast;
@@ -139,6 +142,11 @@ function formatTimeLabel(unixSec: number, tf: ForecastTimeframe): string {
   const d = new Date(unixSec * 1000);
   const hh = String(d.getUTCHours()).padStart(2, '0');
   const mm = String(d.getUTCMinutes()).padStart(2, '0');
+  if (tf === '1D' || tf === '1W') {
+    const mon = d.toLocaleString('en-US', { month: 'short', timeZone: 'UTC' });
+    const day = d.getUTCDate();
+    return `${mon} ${day}`;
+  }
   if (tf === '4H') {
     const mon = d.toLocaleString('en-US', { month: 'short', timeZone: 'UTC' });
     const day = d.getUTCDate();
@@ -152,7 +160,7 @@ export default function MultiTimeframeProjectionChart({
 }: MultiTimeframeProjectionChartProps) {
   const normalizedInitialTf = useMemo<ForecastTimeframe>(() => {
     const raw = String(signal.timeframe || '15M').toUpperCase();
-    if (raw === '5M' || raw === '15M' || raw === '1H' || raw === '4H') {
+    if ((TIMEFRAMES as string[]).includes(raw)) {
       return raw as ForecastTimeframe;
     }
     return '15M';
@@ -162,17 +170,19 @@ export default function MultiTimeframeProjectionChart({
   const [hoverIndex, setHoverIndex] = useState<number | null>(null);
   const [isExporting, setIsExporting] = useState(false);
 
+  useEffect(() => {
+    setSelectedTf(normalizedInitialTf);
+  }, [normalizedInitialTf]);
+
   const forecastMap: MultiTimeframeForecast = useMemo(() => {
-    if (
-      signal.multiTimeframeForecast &&
-      signal.multiTimeframeForecast['5M'] &&
-      signal.multiTimeframeForecast['15M'] &&
-      signal.multiTimeframeForecast['1H'] &&
-      signal.multiTimeframeForecast['4H']
-    ) {
-      return signal.multiTimeframeForecast;
+    const fallback = buildFallbackForecast(signal);
+    if (!signal.multiTimeframeForecast) {
+      return fallback;
     }
-    return buildFallbackForecast(signal);
+    return {
+      ...fallback,
+      ...signal.multiTimeframeForecast,
+    };
   }, [signal]);
 
   const activeProjection: TimeframeForecastProjection =
@@ -545,65 +555,35 @@ export default function MultiTimeframeProjectionChart({
 
   return (
     <div className="saas-card rounded-2xl p-5 space-y-4">
-      {/* Header Row with Timeframe Switcher (5M, 15M, 1H, 4H) & Download Screenshot CTA */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-[#E2E8F0]">
-        <div>
-          <div className="flex flex-wrap items-center gap-2">
-            <BarChart3 className="w-4 h-4 text-[#1D4ED8]" />
-            <h3 className="text-xs sm:text-sm font-mono font-bold uppercase tracking-wider text-[#0F172A]">
-              Multi-Timeframe Market Projection Chart
-            </h3>
-            <span
-              className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[10px] font-mono font-bold border ${
-                activeProjection.bias === 'BULLISH'
-                  ? 'bg-[#EFF6FF] border-[#93C5FD] text-[#1D4ED8]'
-                  : activeProjection.bias === 'BEARISH'
-                  ? 'bg-[#FEF2F2] border-[#FECACA] text-[#EF4444]'
-                  : 'bg-[#FEF3C7] border-[#FDE68A] text-[#0F172A]'
-              }`}
-            >
-              {activeProjection.bias === 'BULLISH' ? (
-                <TrendingUp className="w-3 h-3" />
-              ) : (
-                <TrendingDown className="w-3 h-3" />
-              )}
-              <span>{selectedTf} {activeProjection.bias}</span>
-            </span>
-          </div>
-          <p className="mt-1 text-xs text-[#475569]">
-            Interactive historical OHLC candles + projected pullback-to-target trajectory across 5M, 15M, 1H &amp; 4H
-          </p>
-        </div>
-
-        <div className="flex flex-wrap items-center gap-2">
-          {/* Timeframe Selector Tabs */}
-          <div
-            role="tablist"
-            aria-label="Projection timeframe selector"
-            className="inline-flex items-center rounded-xl border border-[#CBD5E1] bg-[#F8FAFC] p-1"
-          >
-            {TIMEFRAMES.map((tf) => {
-              const isSelected = tf === selectedTf;
-              return (
-                <button
-                  key={tf}
-                  type="button"
-                  role="tab"
-                  aria-selected={isSelected}
-                  onClick={() => {
-                    setSelectedTf(tf);
-                    setHoverIndex(null);
-                  }}
-                  className={`px-3 py-1 rounded-lg font-mono text-xs font-bold transition-all ${
-                    isSelected
-                      ? 'bg-[#1D4ED8] text-white shadow-sm'
-                      : 'text-[#475569] hover:text-[#0F172A] hover:bg-white'
-                  }`}
-                >
-                  {tf}
-                </button>
-              );
-            })}
+      {/* Header Row with Timeframe Switcher (1M, 5M, 15M, 30M, 1H, 4H, 1D, 1W) & Download Screenshot CTA */}
+      <div className="flex flex-col gap-3 pb-3 border-b border-[#E2E8F0]">
+        <div className="flex flex-wrap items-start justify-between gap-2">
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2">
+              <BarChart3 className="w-4 h-4 shrink-0 text-[#1D4ED8]" />
+              <h3 className="text-xs sm:text-sm font-mono font-bold uppercase tracking-wider text-[#0F172A]">
+                Multi-Timeframe Market Projection Chart
+              </h3>
+              <span
+                className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[10px] font-mono font-bold border ${
+                  activeProjection.bias === 'BULLISH'
+                    ? 'bg-[#EFF6FF] border-[#93C5FD] text-[#1D4ED8]'
+                    : activeProjection.bias === 'BEARISH'
+                    ? 'bg-[#FEF2F2] border-[#FECACA] text-[#EF4444]'
+                    : 'bg-[#FEF3C7] border-[#FDE68A] text-[#0F172A]'
+                }`}
+              >
+                {activeProjection.bias === 'BULLISH' ? (
+                  <TrendingUp className="w-3 h-3" />
+                ) : (
+                  <TrendingDown className="w-3 h-3" />
+                )}
+                <span>{selectedTf} {activeProjection.bias}</span>
+              </span>
+            </div>
+            <p className="mt-1 text-xs text-[#475569]">
+              Interactive historical OHLC candles + projected pullback-to-target trajectory across 1M, 5M, 15M, 30M, 1H, 4H, 1D &amp; 1W
+            </p>
           </div>
 
           {/* Download Projection Screenshot Button */}
@@ -611,13 +591,43 @@ export default function MultiTimeframeProjectionChart({
             type="button"
             onClick={handleDownloadForecastScreenshot}
             disabled={isExporting}
-            className="inline-flex items-center gap-1.5 rounded-xl bg-[#0F172A] hover:bg-[#1E293B] px-3.5 py-2 text-xs font-mono font-bold text-white shadow-sm transition-all disabled:opacity-60"
+            className="inline-flex shrink-0 items-center gap-1.5 rounded-xl bg-[#0F172A] hover:bg-[#1E293B] px-3.5 py-2 text-xs font-mono font-bold text-white shadow-sm transition-all disabled:opacity-60"
             title="Download high-resolution PNG projection chart screenshot"
           >
             <Camera className="w-3.5 h-3.5 text-[#93C5FD]" />
             <span>{isExporting ? 'Rendering PNG…' : `Download ${selectedTf} Chart`}</span>
             <Download className="w-3.5 h-3.5 text-[#93C5FD]" />
           </button>
+        </div>
+
+        {/* Timeframe Selector Tabs — Cleanly Wrapped & Horizontally Scrollable */}
+        <div
+          role="tablist"
+          aria-label="Projection timeframe selector"
+          className="flex flex-wrap items-center gap-1 max-w-full overflow-x-auto rounded-xl border border-[#CBD5E1] bg-[#F8FAFC] p-1"
+        >
+          {TIMEFRAMES.map((tf) => {
+            const isSelected = tf === selectedTf;
+            return (
+              <button
+                key={tf}
+                type="button"
+                role="tab"
+                aria-selected={isSelected}
+                onClick={() => {
+                  setSelectedTf(tf);
+                  setHoverIndex(null);
+                }}
+                className={`shrink-0 px-2.5 py-1 rounded-lg font-mono text-xs font-bold transition-all ${
+                  isSelected
+                    ? 'bg-[#1D4ED8] text-white shadow-sm'
+                    : 'text-[#475569] hover:text-[#0F172A] hover:bg-white'
+                }`}
+              >
+                {tf}
+              </button>
+            );
+          })}
         </div>
       </div>
 

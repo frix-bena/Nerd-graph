@@ -227,6 +227,8 @@ export function isAutoAsset(rawAsset?: string): boolean {
     upper === 'AUTO' ||
     upper === 'AUTODETECT' ||
     upper === 'AUTO-DETECT' ||
+    upper === 'AUTO-DETECT (AI)' ||
+    upper.startsWith('AUTO-DETECT') ||
     upper === 'DETECT' ||
     upper === 'NONE' ||
     upper === 'UNKNOWN' ||
@@ -242,6 +244,7 @@ export function isAutoTimeframe(rawTf?: string): boolean {
     upper === 'AUTO' ||
     upper === 'AUTODETECT' ||
     upper === 'AUTO-DETECT' ||
+    upper.startsWith('AUTO') ||
     upper === 'DETECT' ||
     upper === 'NONE' ||
     upper === 'UNKNOWN'
@@ -1026,7 +1029,7 @@ async function tryFetchFromYahooFinance(
  * Anchors directly to the chart's calibrated price (`referencePrice`) and direction (`preferredBias`)
  * when provided so downstream SMC math never conflicts with the uploaded chart.
  */
-function generateSyntheticInstitutionalCandles(
+export function generateSyntheticInstitutionalCandles(
   symbol: string,
   timeframe: SupportedTimeframe,
   options?: { referencePrice?: number; preferredBias?: MarketBias }

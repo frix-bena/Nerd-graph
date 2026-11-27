@@ -473,7 +473,10 @@ export default function HomePage() {
       </section>
 
       {/* Main Interactive Chart Analysis Workspace */}
-      <main id="workspace" className="mx-auto max-w-[1280px] space-y-8 px-4 py-12 sm:px-6 lg:px-8 lg:py-16">
+      <main
+        id="workspace"
+        className="mx-auto max-w-[1280px] scroll-mt-20 space-y-8 px-4 pt-20 pb-12 sm:px-6 lg:px-8 lg:pt-20 lg:pb-16"
+      >
         <section className="flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
           <div>
             <div className="inline-flex items-center gap-2 rounded-full border border-[#BFDBFE] bg-[#EFF6FF] px-3 py-1 text-xs font-semibold">
@@ -522,6 +525,8 @@ export default function HomePage() {
             isLoading={isAnalyzing}
             persistedImage={activeChartImage}
             onImageChange={setActiveChartImage}
+            detectedAsset={activeSignal?.detectedAsset || activeSignal?.asset}
+            detectedTimeframe={activeSignal?.detectedTimeframe || activeSignal?.timeframe}
           />
 
           <div className="min-w-0">

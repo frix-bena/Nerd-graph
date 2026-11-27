@@ -39,9 +39,9 @@ YOUR #1 MANDATE IS MAXIMUM PREDICTION ACCURACY, ZERO HALLUCINATIONS, AND ZERO DI
 Follow this strict 6-Stage Verification Protocol before outputting your JSON:
 
 STAGE 0 — EXACT MARKET & TIMEFRAME IDENTIFICATION (ANTI-HALLUCINATION PROTOCOL):
-- Inspect the uploaded image's top-left header, watermark, title bar, tab, or legend to read the exact market ticker/symbol ("detected_chart_symbol", e.g., XAUUSD, EURUSD, GBPUSD, USDJPY, GBPJPY, AUDUSD, USDCAD, NAS100, US30, SPX500, GER40, BTCUSDT, ETHUSDT, SOLUSDT, XAGUSD, USOIL, NVDA, AAPL) and timeframe ("detected_chart_timeframe", e.g., 1M, 5M, 15M, 30M, 1H, 4H, 1D, 1W).
-- If no symbol text is visible on the image (e.g., cropped screenshot), set "detected_chart_symbol": "NONE" and use the user-provided market hint.
-- If a symbol IS clearly printed on the chart image AND conflicts with the user-provided hint, trust the symbol printed on the chart image ("detected_chart_symbol") so you NEVER hallucinate the wrong market.
+- Inspect the uploaded image's top-left header, watermark, title bar, tab, legend, or price scale to read the exact market ticker/symbol ("detectedAsset" and "detected_chart_symbol", e.g., XAUUSD, EURUSD, GBPUSD, USDJPY, GBPJPY, AUDUSD, USDCAD, NAS100, US30, SPX500, GER40, BTCUSDT, ETHUSDT, SOLUSDT, XAGUSD, USOIL, NVDA, AAPL) and timeframe ("detectedTimeframe" and "detected_chart_timeframe", e.g., 1M, 5M, 15M, 30M, 1H, 4H, 1D, 1W).
+- If no symbol text is printed on the header/watermark, infer the most likely ticker from the visible Y-axis price scale (e.g., ~2600-2800 -> XAUUSD, ~1.05-1.12 -> EURUSD, ~1.25-1.35 -> GBPUSD, ~145-160 -> USDJPY, ~190-205 -> GBPJPY, ~18000-22000 -> NAS100, ~40000-45000 -> US30, ~60000-100000 -> BTCUSDT) or fall back to the user-provided market hint.
+- If a symbol IS clearly printed on the chart image AND conflicts with the user-provided hint, trust the symbol printed on the chart image ("detectedAsset" / "detected_chart_symbol") so you NEVER hallucinate the wrong market.
 
 STAGE 1 — Y-AXIS PRICE SCALE & CURRENT PRICE CALIBRATION (SINGLE SOURCE OF TRUTH):
 - Read the numerical price scale on the chart's Y-axis (right or left edge).
@@ -96,8 +96,10 @@ STAGE 5 — TRAJECTORY PATH LOCKING:
 Analyze the uploaded image and output ONLY a strictly valid JSON object matching this exact schema:
 
 {
-  "asset": "Authoritative market ticker (e.g., XAUUSD, EURUSD, USDJPY, BTCUSDT, NAS100)",
-  "timeframe": "Authoritative timeframe (e.g., 15M, 1H, 4H, 1D)",
+  "asset": "Authoritative market ticker (e.g., XAUUSD, EURUSD, USDJPY, GBPJPY, BTCUSDT, NAS100, US30)",
+  "detectedAsset": "Exact market ticker auto-detected from chart header, watermark, or Y-axis price scale (e.g., XAUUSD, EURUSD, GBPJPY, BTCUSDT, US30)",
+  "timeframe": "Authoritative timeframe (e.g., 1M, 5M, 15M, 30M, 1H, 4H, 1D, 1W)",
+  "detectedTimeframe": "Exact timeframe auto-detected from chart header (e.g., 1M, 5M, 15M, 30M, 1H, 4H, 1D, 1W)",
   "chart_type": "CANDLESTICK | LINE_OR_OVERLAID",
   "analysis_mode": "SMC_CANDLESTICK | MACRO_PRICE_ACTION",
   "bias": "BULLISH | BEARISH | NEUTRAL",
@@ -1117,11 +1119,15 @@ export function normalizeSMCResponse(
     userAsset: userHints?.asset,
     userTimeframe: userHints?.timeframe,
     detectedChartSymbol:
-      typeof calibration.detected_chart_symbol === 'string'
+      typeof raw.detectedAsset === 'string' && !isAutoAsset(raw.detectedAsset)
+        ? raw.detectedAsset
+        : typeof calibration.detected_chart_symbol === 'string'
         ? calibration.detected_chart_symbol
         : undefined,
     detectedChartTimeframe:
-      typeof calibration.detected_chart_timeframe === 'string'
+      typeof raw.detectedTimeframe === 'string' && !isAutoTimeframe(raw.detectedTimeframe)
+        ? raw.detectedTimeframe
+        : typeof calibration.detected_chart_timeframe === 'string'
         ? calibration.detected_chart_timeframe
         : undefined,
     modelAsset: typeof raw.asset === 'string' ? raw.asset : undefined,
@@ -1519,7 +1525,9 @@ export function normalizeSMCResponse(
 
   return {
     asset: resolvedAsset,
+    detectedAsset: resolvedAsset,
     timeframe: resolvedTimeframe,
+    detectedTimeframe: resolvedTimeframe,
     chart_type: chartType,
     analysis_mode: analysisMode,
     bias,

@@ -316,10 +316,10 @@ export default function SignalDashboard({
             </span>
           </div>
 
-          <div className="grid grid-cols-2 sm:grid-cols-5 gap-2.5">
+          <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-3">
             {/* Entry Price */}
-            <div className="rounded-xl border-2 border-[#F59E0B] bg-[#FEF3C7]/45 p-3">
-              <div className="flex items-center justify-between gap-1">
+            <div className="min-w-0 break-words rounded-xl border-2 border-[#F59E0B] bg-[#FEF3C7]/45 p-3">
+              <div className="flex flex-wrap items-center justify-between gap-1">
                 <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-[#0F172A]">
                   Entry Price
                 </span>
@@ -327,17 +327,17 @@ export default function SignalDashboard({
                   {isBuy ? 'BUY' : isSell ? 'SELL' : 'ENTRY'}
                 </span>
               </div>
-              <p className="mt-1 font-mono text-base sm:text-lg font-extrabold text-[#0F172A]">
+              <p className="mt-1 font-mono text-base sm:text-lg font-extrabold text-[#0F172A] break-words">
                 {formatSignalPrice(entryPriceNum, signal.asset)}
               </p>
-              <p className="mt-0.5 text-[10px] font-mono text-[#475569]">
+              <p className="mt-0.5 text-[10px] font-mono text-[#475569] break-words">
                 Institutional Execution Zone
               </p>
             </div>
 
             {/* Stop Loss */}
-            <div className="rounded-xl border-2 border-[#EF4444] bg-[#FEF2F2] p-3">
-              <div className="flex items-center justify-between gap-1">
+            <div className="min-w-0 break-words rounded-xl border-2 border-[#EF4444] bg-[#FEF2F2] p-3">
+              <div className="flex flex-wrap items-center justify-between gap-1">
                 <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-[#EF4444]">
                   Stop Loss (SL)
                 </span>
@@ -345,17 +345,17 @@ export default function SignalDashboard({
                   0.8x-1.5x ATR
                 </span>
               </div>
-              <p className="mt-1 font-mono text-base sm:text-lg font-extrabold text-[#EF4444]">
+              <p className="mt-1 font-mono text-base sm:text-lg font-extrabold text-[#EF4444] break-words">
                 {formatSignalPrice(stopLossNum, signal.asset)}
               </p>
-              <p className="mt-0.5 text-[10px] font-mono text-[#475569]">
+              <p className="mt-0.5 text-[10px] font-mono text-[#475569] break-words">
                 Tight Micro-Swing SL
               </p>
             </div>
 
             {/* Take Profit 1 */}
-            <div className="rounded-xl border border-[#93C5FD] bg-[#EFF6FF] p-3">
-              <div className="flex items-center justify-between gap-1">
+            <div className="min-w-0 break-words rounded-xl border border-[#93C5FD] bg-[#EFF6FF] p-3">
+              <div className="flex flex-wrap items-center justify-between gap-1">
                 <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-[#1D4ED8]">
                   Take Profit 1
                 </span>
@@ -365,17 +365,17 @@ export default function SignalDashboard({
                   </span>
                 )}
               </div>
-              <p className="mt-1 font-mono text-base sm:text-lg font-extrabold text-[#1D4ED8]">
+              <p className="mt-1 font-mono text-base sm:text-lg font-extrabold text-[#1D4ED8] break-words">
                 {formatSignalPrice(tp1Num, signal.asset)}
               </p>
-              <p className="mt-0.5 text-[10px] font-mono text-[#475569]">
+              <p className="mt-0.5 text-[10px] font-mono text-[#475569] break-words">
                 Internal Liquidity Target
               </p>
             </div>
 
             {/* Take Profit 2 */}
-            <div className="rounded-xl border border-[#1D4ED8] bg-[#EFF6FF] p-3">
-              <div className="flex items-center justify-between gap-1">
+            <div className="min-w-0 break-words rounded-xl border border-[#1D4ED8] bg-[#EFF6FF] p-3">
+              <div className="flex flex-wrap items-center justify-between gap-1">
                 <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-[#1D4ED8]">
                   Take Profit 2
                 </span>
@@ -385,17 +385,17 @@ export default function SignalDashboard({
                   </span>
                 )}
               </div>
-              <p className="mt-1 font-mono text-base sm:text-lg font-extrabold text-[#1D4ED8]">
+              <p className="mt-1 font-mono text-base sm:text-lg font-extrabold text-[#1D4ED8] break-words">
                 {formatSignalPrice(tp2Num, signal.asset)}
               </p>
-              <p className="mt-0.5 text-[10px] font-mono text-[#475569]">
+              <p className="mt-0.5 text-[10px] font-mono text-[#475569] break-words">
                 Primary Structural Target
               </p>
             </div>
 
             {/* Take Profit 3 */}
-            <div className="col-span-2 sm:col-span-1 rounded-xl border-2 border-[#1D4ED8] bg-[#DBEAFE]/55 p-3">
-              <div className="flex items-center justify-between gap-1">
+            <div className="col-span-2 md:col-span-1 min-w-0 break-words rounded-xl border-2 border-[#1D4ED8] bg-[#DBEAFE]/55 p-3">
+              <div className="flex flex-wrap items-center justify-between gap-1">
                 <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-[#0F172A]">
                   Take Profit 3
                 </span>
@@ -405,10 +405,10 @@ export default function SignalDashboard({
                   </span>
                 )}
               </div>
-              <p className="mt-1 font-mono text-base sm:text-lg font-extrabold text-[#1D4ED8]">
+              <p className="mt-1 font-mono text-base sm:text-lg font-extrabold text-[#1D4ED8] break-words">
                 {formatSignalPrice(tp3Num, signal.asset)}
               </p>
-              <p className="mt-0.5 text-[10px] font-mono text-[#475569]">
+              <p className="mt-0.5 text-[10px] font-mono text-[#475569] break-words">
                 Extended Runner Target
               </p>
             </div>
@@ -571,7 +571,7 @@ export default function SignalDashboard({
                 R:R {rrr}
               </span>
             </div>
-            <div className="mt-3.5 grid grid-cols-2 gap-3">
+            <div className="mt-3.5 grid grid-cols-1 xl:grid-cols-2 gap-3">
               {[
                 {
                   label: 'Entry Price',
@@ -621,35 +621,35 @@ export default function SignalDashboard({
               ].map((level) => (
                 <div
                   key={level.label}
-                  className={`rounded-xl border border-[#E2E8F0] bg-[#F8FAFC] p-3 ${
-                    'fullWidth' in level && level.fullWidth ? 'col-span-2' : ''
+                  className={`min-w-0 break-words rounded-xl border border-[#E2E8F0] bg-[#F8FAFC] p-3 ${
+                    'fullWidth' in level && level.fullWidth ? 'xl:col-span-2' : ''
                   }`}
                 >
-                  <div className="flex items-center justify-between gap-1.5">
-                    <div className="flex items-center gap-1.5">
+                  <div className="flex flex-wrap items-center justify-between gap-1.5 min-w-0">
+                    <div className="flex items-center gap-1.5 min-w-0">
                       <span
-                        className="h-2 w-2 rounded-full"
+                        className="h-2 w-2 shrink-0 rounded-full"
                         style={{ backgroundColor: level.badge }}
                       />
-                      <p className="text-[10px] font-bold uppercase tracking-wide text-[#475569]">
+                      <p className="text-[10px] font-bold uppercase tracking-wide text-[#475569] break-words">
                         {level.label}
                       </p>
                     </div>
                     {typeof level.yPct === 'number' && (
-                      <span className="text-[9px] font-mono text-[#475569]">
+                      <span className="shrink-0 text-[9px] font-mono text-[#475569]">
                         Y:{level.yPct}%
                       </span>
                     )}
                   </div>
-                  <div className="mt-1 flex items-baseline justify-between gap-2">
+                  <div className="mt-1.5 flex flex-col items-start gap-1 min-w-0">
                     <p
-                      className="font-mono text-base font-extrabold"
+                      className="font-mono text-base font-extrabold break-words"
                       style={{ color: level.color }}
                     >
                       {formatSignalPrice(level.value, signal.asset)}
                     </p>
                     {level.sub && (
-                      <span className="text-[10px] font-mono text-[#475569]">
+                      <span className="text-[10px] font-mono text-[#475569] break-words">
                         {level.sub}
                       </span>
                     )}

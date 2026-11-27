@@ -21,10 +21,30 @@ interface ChartUploadProps {
   isLoading: boolean;
   persistedImage?: string;
   onImageChange?: (imageData: string) => void;
+  detectedAsset?: string;
+  detectedTimeframe?: string;
 }
 
-const ASSETS = ['XAUUSD', 'EURUSD', 'GBPUSD', 'NAS100', 'BTCUSDT', 'US30'];
-const TIMEFRAMES = ['5M', '15M', '1H', '4H', '1D'];
+const ASSETS = [
+  { value: 'AUTO', label: 'Auto-Detect (AI)' },
+  { value: 'XAUUSD', label: 'XAUUSD' },
+  { value: 'EURUSD', label: 'EURUSD' },
+  { value: 'GBPUSD', label: 'GBPUSD' },
+  { value: 'NAS100', label: 'NAS100' },
+  { value: 'BTCUSDT', label: 'BTCUSDT' },
+  { value: 'US30', label: 'US30' },
+];
+const TIMEFRAMES = [
+  { value: 'AUTO', label: 'Auto' },
+  { value: '1M', label: '1M' },
+  { value: '5M', label: '5M' },
+  { value: '15M', label: '15M' },
+  { value: '30M', label: '30M' },
+  { value: '1H', label: '1H' },
+  { value: '4H', label: '4H' },
+  { value: '1D', label: '1D' },
+  { value: '1W', label: '1W' },
+];
 const ACCEPTED_TYPES = ['image/png', 'image/jpeg', 'image/jpg', 'image/webp'];
 const MAX_FILE_SIZE = 10 * 1024 * 1024;
 
@@ -33,12 +53,14 @@ export default function ChartUpload({
   isLoading,
   persistedImage,
   onImageChange,
+  detectedAsset,
+  detectedTimeframe,
 }: ChartUploadProps) {
   const [isDragOver, setIsDragOver] = useState(false);
   const [preview, setPreview] = useState<string | null>(persistedImage || null);
   const [selectedSample, setSelectedSample] = useState<SampleChart | null>(null);
-  const [asset, setAsset] = useState('XAUUSD');
-  const [timeframe, setTimeframe] = useState('15M');
+  const [asset, setAsset] = useState('AUTO');
+  const [timeframe, setTimeframe] = useState('AUTO');
   const [error, setError] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -89,8 +111,6 @@ export default function ChartUpload({
   }, [loadFile]);
 
   const selectSample = (sample: SampleChart) => {
-    setAsset(sample.asset);
-    setTimeframe(sample.timeframe.toUpperCase());
     setSelectedSample(sample);
     setPreview(sample.thumbnailUrl);
     onImageChange?.(sample.thumbnailUrl);
@@ -109,11 +129,19 @@ export default function ChartUpload({
   };
 
   const activePreviewUrl = preview || persistedImage || null;
+  const previewAssetBadge =
+    asset === 'AUTO'
+      ? detectedAsset || selectedSample?.asset || 'Auto-Detect (AI)'
+      : asset;
+  const previewTimeframeBadge =
+    timeframe === 'AUTO'
+      ? detectedTimeframe || selectedSample?.timeframe?.toUpperCase() || 'Auto'
+      : timeframe;
 
   return (
-    <div className="saas-card rounded-2xl p-4 sm:p-5 space-y-5">
+    <div className="saas-card rounded-2xl p-4 sm:p-5 space-y-5 min-w-0">
       <div>
-        <div className="flex items-center justify-between gap-2">
+        <div className="flex flex-wrap items-center justify-between gap-2">
           <p className="text-sm font-bold text-[#0F172A]">Chart input</p>
           <span className="rounded-full border border-[#BFDBFE] bg-[#EFF6FF] px-2.5 py-0.5 text-[10px] font-bold text-[#1D4ED8]">
             Candlestick &amp; Line / Overlaid Supported
@@ -124,40 +152,42 @@ export default function ChartUpload({
         </p>
       </div>
 
-      <div className="flex flex-wrap gap-2">
+      <div className="space-y-3">
         <div className="flex flex-wrap items-center gap-1.5">
-          <span className="text-[10px] font-semibold uppercase tracking-wider text-[#475569]">
+          <span className="mr-1 text-[10px] font-semibold uppercase tracking-wider text-[#475569]">
             Asset
           </span>
-          {ASSETS.map((value) => (
+          {ASSETS.map((item) => (
             <button
-              key={value}
+              key={item.value}
               type="button"
-              onClick={() => setAsset(value)}
-              className={`rounded-full border px-2.5 py-1 text-[11px] font-mono font-semibold transition ${asset === value
-                ? 'border-[#1D4ED8] bg-[#EFF6FF] text-[#1D4ED8]'
-                : 'border-[#CBD5E1] bg-[#F8FAFC] text-[#475569] hover:border-[#93C5FD] hover:bg-[#EFF6FF]/60 hover:text-[#0F172A]'
-                }`}
+              onClick={() => setAsset(item.value)}
+              className={`rounded-full border px-2.5 py-1 text-[11px] font-mono font-semibold transition ${
+                asset === item.value
+                  ? 'border-[#1D4ED8] bg-[#EFF6FF] text-[#1D4ED8]'
+                  : 'border-[#CBD5E1] bg-[#F8FAFC] text-[#475569] hover:border-[#93C5FD] hover:bg-[#EFF6FF]/60 hover:text-[#0F172A]'
+              }`}
             >
-              {value}
+              {item.label}
             </button>
           ))}
         </div>
-        <div className="flex flex-wrap items-center gap-1.5 sm:ml-auto">
-          <span className="text-[10px] font-semibold uppercase tracking-wider text-[#475569]">
+        <div className="flex flex-wrap items-center gap-1.5">
+          <span className="mr-1 text-[10px] font-semibold uppercase tracking-wider text-[#475569]">
             Timeframe
           </span>
-          {TIMEFRAMES.map((value) => (
+          {TIMEFRAMES.map((item) => (
             <button
-              key={value}
+              key={item.value}
               type="button"
-              onClick={() => setTimeframe(value)}
-              className={`rounded-full border px-2.5 py-1 text-[11px] font-mono font-semibold transition ${timeframe === value
-                ? 'border-[#1D4ED8] bg-[#EFF6FF] text-[#1D4ED8]'
-                : 'border-[#CBD5E1] bg-[#F8FAFC] text-[#475569] hover:border-[#93C5FD] hover:bg-[#EFF6FF]/60 hover:text-[#0F172A]'
-                }`}
+              onClick={() => setTimeframe(item.value)}
+              className={`rounded-full border px-2.5 py-1 text-[11px] font-mono font-semibold transition ${
+                timeframe === item.value
+                  ? 'border-[#1D4ED8] bg-[#EFF6FF] text-[#1D4ED8]'
+                  : 'border-[#CBD5E1] bg-[#F8FAFC] text-[#475569] hover:border-[#93C5FD] hover:bg-[#EFF6FF]/60 hover:text-[#0F172A]'
+              }`}
             >
-              {value}
+              {item.label}
             </button>
           ))}
         </div>
@@ -165,9 +195,12 @@ export default function ChartUpload({
 
       {activePreviewUrl ? (
         <div className="overflow-hidden rounded-xl border border-[#CBD5E1] bg-[#F8FAFC]">
-          <div className="flex items-center justify-between border-b border-[#E2E8F0] bg-white px-3 py-2">
-            <span className="flex items-center gap-2 text-xs font-medium text-[#0F172A]">
-              <ImageIcon className="h-3.5 w-3.5 text-[#1D4ED8]" /> Preview · {asset} · {timeframe}
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[#E2E8F0] bg-white px-3 py-2">
+            <span className="flex items-center gap-2 text-xs font-medium text-[#0F172A] min-w-0">
+              <ImageIcon className="h-3.5 w-3.5 shrink-0 text-[#1D4ED8]" />
+              <span className="truncate">
+                Preview · {previewAssetBadge} · {previewTimeframeBadge}
+              </span>
             </span>
             <div className="flex items-center gap-2">
               <button

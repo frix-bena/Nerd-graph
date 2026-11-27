@@ -13,6 +13,7 @@ import {
   MarketDataSource,
   MultiTimeframeMarketContext,
   OHLCVCandle,
+  generateSyntheticInstitutionalCandles,
   getAssetDecimals,
 } from './marketData';
 import { QuantEngineOutput, computeATR14 } from './quantEngine';
@@ -161,19 +162,27 @@ export function buildMultiTimeframeForecast(
     atrMultiplier: number;
     horizonLabel: string;
   }[] = [
+    { tf: '1M', stepSeconds: 60, atrMultiplier: 0.35, horizonLabel: '5-minute ultra-fast scalp horizon' },
     { tf: '5M', stepSeconds: 5 * 60, atrMultiplier: 0.65, horizonLabel: '25-minute micro-scalp horizon' },
     { tf: '15M', stepSeconds: 15 * 60, atrMultiplier: 1.0, horizonLabel: '75-minute intraday execution window' },
+    { tf: '30M', stepSeconds: 30 * 60, atrMultiplier: 1.22, horizonLabel: '2.5-hour intraday structure window' },
     { tf: '1H', stepSeconds: 60 * 60, atrMultiplier: 1.45, horizonLabel: '5-hour session continuation structure' },
     { tf: '4H', stepSeconds: 4 * 60 * 60, atrMultiplier: 2.1, horizonLabel: '20-hour institutional order-flow block' },
+    { tf: '1D', stepSeconds: 24 * 60 * 60, atrMultiplier: 3.6, horizonLabel: '5-day daily swing expansion cycle' },
+    { tf: '1W', stepSeconds: 7 * 24 * 60 * 60, atrMultiplier: 6.2, horizonLabel: '5-week macro institutional trajectory' },
   ];
 
   const forecast = {} as MultiTimeframeForecast;
 
   for (const cfg of tfConfigs) {
+    const existingTfCandles = mtfContext?.timeframes?.[cfg.tf]?.candles;
     const rawTfCandles =
-      mtfContext?.timeframes?.[cfg.tf]?.candles ||
-      mtfContext?.timeframes?.[quant.primaryTimeframe]?.candles ||
-      [];
+      existingTfCandles && existingTfCandles.length > 0
+        ? existingTfCandles
+        : generateSyntheticInstitutionalCandles(resolvedAsset, cfg.tf, {
+            referencePrice: currentPrice,
+            preferredBias: primaryBias,
+          });
 
     const tfAtr = roundToPrecision(
       Math.max(effectiveBaseAtr * cfg.atrMultiplier, Math.pow(10, -decimals) * 4),
