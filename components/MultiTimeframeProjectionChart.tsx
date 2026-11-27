@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useMemo, useCallback, useEffect } from 'react';
+import React, { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import {
   ForecastHistoricalCandle,
   ForecastProjectedPoint,
@@ -18,8 +18,13 @@ import {
   CheckCircle2,
   Download,
   GitCommit,
+  Maximize2,
+  RotateCcw,
   TrendingDown,
   TrendingUp,
+  X,
+  ZoomIn,
+  ZoomOut,
 } from 'lucide-react';
 
 interface MultiTimeframeProjectionChartProps {
@@ -169,6 +174,114 @@ export default function MultiTimeframeProjectionChart({
   const [selectedTf, setSelectedTf] = useState<ForecastTimeframe>(normalizedInitialTf);
   const [hoverIndex, setHoverIndex] = useState<number | null>(null);
   const [isExporting, setIsExporting] = useState(false);
+
+  // Lightbox & Zoom/Pan State for the Projection Chart
+  const [isLightboxOpen, setIsLightboxOpen] = useState(false);
+  const [zoomScale, setZoomScale] = useState(1);
+  const [panOffset, setPanOffset] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
+  const [isDragging, setIsDragging] = useState(false);
+  const dragStartRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
+  const lightboxViewportRef = useRef<HTMLDivElement | null>(null);
+
+  const clampZoom = useCallback((nextScale: number) => {
+    return Math.min(4, Math.max(0.5, Math.round(nextScale * 100) / 100));
+  }, []);
+
+  const handleZoomIn = useCallback(() => {
+    setZoomScale((prev) => clampZoom(prev + 0.25));
+  }, [clampZoom]);
+
+  const handleZoomOut = useCallback(() => {
+    setZoomScale((prev) => {
+      const next = clampZoom(prev - 0.25);
+      if (next <= 1) setPanOffset({ x: 0, y: 0 });
+      return next;
+    });
+  }, [clampZoom]);
+
+  const handleResetZoom = useCallback(() => {
+    setZoomScale(1);
+    setPanOffset({ x: 0, y: 0 });
+    setIsDragging(false);
+  }, []);
+
+  const handleOpenLightbox = useCallback(() => {
+    setZoomScale(1);
+    setPanOffset({ x: 0, y: 0 });
+    setIsDragging(false);
+    setIsLightboxOpen(true);
+  }, []);
+
+  const handleCloseLightbox = useCallback(() => {
+    setIsLightboxOpen(false);
+    setIsDragging(false);
+  }, []);
+
+  useEffect(() => {
+    if (!isLightboxOpen) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        handleCloseLightbox();
+      } else if (e.key === '+' || e.key === '=') {
+        handleZoomIn();
+      } else if (e.key === '-') {
+        handleZoomOut();
+      } else if (e.key === '0') {
+        handleResetZoom();
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [isLightboxOpen, handleCloseLightbox, handleZoomIn, handleZoomOut, handleResetZoom]);
+
+  useEffect(() => {
+    if (!isLightboxOpen) return;
+    const viewport = lightboxViewportRef.current;
+    if (!viewport) return;
+
+    const onWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      const delta = e.deltaY < 0 ? 0.2 : -0.2;
+      setZoomScale((prev) => {
+        const next = clampZoom(prev + delta);
+        if (next <= 1) setPanOffset({ x: 0, y: 0 });
+        return next;
+      });
+    };
+
+    viewport.addEventListener('wheel', onWheel, { passive: false });
+    return () => viewport.removeEventListener('wheel', onWheel);
+  }, [isLightboxOpen, clampZoom]);
+
+  const handleMouseDown = useCallback(
+    (e: React.MouseEvent<HTMLDivElement>) => {
+      if (zoomScale <= 1) return;
+      e.preventDefault();
+      setIsDragging(true);
+      dragStartRef.current = {
+        x: e.clientX - panOffset.x,
+        y: e.clientY - panOffset.y,
+      };
+    },
+    [zoomScale, panOffset.x, panOffset.y]
+  );
+
+  const handleMouseMove = useCallback(
+    (e: React.MouseEvent<HTMLDivElement>) => {
+      if (!isDragging || zoomScale <= 1) return;
+      setPanOffset({
+        x: e.clientX - dragStartRef.current.x,
+        y: e.clientY - dragStartRef.current.y,
+      });
+    },
+    [isDragging, zoomScale]
+  );
+
+  const handleMouseUpOrLeave = useCallback(() => {
+    if (isDragging) {
+      setIsDragging(false);
+    }
+  }, [isDragging]);
 
   useEffect(() => {
     setSelectedTf(normalizedInitialTf);
@@ -553,6 +666,333 @@ export default function MultiTimeframeProjectionChart({
   const slAtrDistance = Math.abs(entryPrice - stopLoss);
   const entryProximityDistance = Math.abs(entryPrice - currentPrice);
 
+  const renderProjectionSvg = (idSuffix: string) => (
+    <svg
+      viewBox={`0 0 ${svgWidth} ${svgHeight}`}
+      className="w-full h-auto block select-none"
+      role="img"
+      aria-label={`Interactive ${selectedTf} market projection chart for ${signal.asset}`}
+    >
+      <defs>
+        <linearGradient id={`forecastRewardZone-${idSuffix}`} x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor="#10B981" stopOpacity="0.20" />
+          <stop offset="100%" stopColor="#1D4ED8" stopOpacity="0.10" />
+        </linearGradient>
+        <linearGradient id={`forecastRiskZone-${idSuffix}`} x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor="#EF4444" stopOpacity="0.22" />
+          <stop offset="100%" stopColor="#EF4444" stopOpacity="0.08" />
+        </linearGradient>
+      </defs>
+
+      {/* Forecast Future Horizon Shaded Background */}
+      <rect
+        x={lastCandleX}
+        y={padTop}
+        width={svgWidth - padRight - lastCandleX}
+        height={plotHeight}
+        fill="rgba(30, 58, 138, 0.16)"
+      />
+
+      {/* Vertical Divider Line between Historical Candles & Future Forecast Zone */}
+      <line
+        x1={lastCandleX}
+        y1={padTop}
+        x2={lastCandleX}
+        y2={padTop + plotHeight}
+        stroke="#60A5FA"
+        strokeWidth="1.5"
+        strokeDasharray="4 4"
+      />
+      <rect
+        x={lastCandleX + 8}
+        y={padTop + 6}
+        width="154"
+        height="18"
+        rx="4"
+        fill="#1E3A8A"
+        stroke="#3B82F6"
+        strokeWidth="1"
+      />
+      <text
+        x={lastCandleX + 16}
+        y={padTop + 18}
+        fill="#DBEAFE"
+        fontSize="9.5"
+        fontFamily="monospace"
+        fontWeight="bold"
+      >
+        {selectedTf} PROJECTED PATH →
+      </text>
+
+      {/* Shaded Reward Band (Entry to TP2) & Risk Band (Entry to SL) in Future Zone */}
+      <rect
+        x={lastCandleX}
+        y={Math.min(yEntry, yTp2)}
+        width={svgWidth - padRight - lastCandleX}
+        height={Math.max(2, Math.abs(yTp2 - yEntry))}
+        fill={`url(#forecastRewardZone-${idSuffix})`}
+      />
+      <rect
+        x={lastCandleX}
+        y={Math.min(yEntry, ySl)}
+        width={svgWidth - padRight - lastCandleX}
+        height={Math.max(2, Math.abs(ySl - yEntry))}
+        fill={`url(#forecastRiskZone-${idSuffix})`}
+      />
+
+      {/* Horizontal Price Grid Lines & Right Y-Axis Ticks */}
+      {priceTicks.map((tick, idx) => {
+        const y = priceToY(tick);
+        return (
+          <g key={`grid-${idSuffix}-${idx}`}>
+            <line
+              x1={padLeft}
+              y1={y}
+              x2={svgWidth - padRight}
+              y2={y}
+              stroke="rgba(148, 163, 184, 0.14)"
+              strokeWidth="1"
+            />
+            <text
+              x={svgWidth - padRight + 10}
+              y={y + 4}
+              fill="#94A3B8"
+              fontSize="10.5"
+              fontFamily="monospace"
+              fontWeight="600"
+            >
+              {formatSignalPrice(tick, signal.asset)}
+            </text>
+          </g>
+        );
+      })}
+
+      {/* Right Y-Axis Border */}
+      <line
+        x1={svgWidth - padRight}
+        y1={padTop}
+        x2={svgWidth - padRight}
+        y2={padTop + plotHeight}
+        stroke="#334155"
+        strokeWidth="1.5"
+      />
+
+      {/* Historical Candlesticks */}
+      {candles.map((c, idx) => {
+        const cx = candleIndexToX(idx);
+        const yO = priceToY(c.open);
+        const yC = priceToY(c.close);
+        const yH = priceToY(c.high);
+        const yL = priceToY(c.low);
+        const isBull = c.close >= c.open;
+        const bodyTop = Math.min(yO, yC);
+        const bodyH = Math.max(2.5, Math.abs(yC - yO));
+        const candleW = Math.max(4, slotWidth * 0.62);
+        const isHovered = hoverIndex === idx;
+
+        return (
+          <g
+            key={`candle-${idSuffix}-${c.time}-${idx}`}
+            onMouseEnter={() => setHoverIndex(idx)}
+            onMouseLeave={() => setHoverIndex(null)}
+          >
+            {isHovered && (
+              <rect
+                x={cx - slotWidth / 2}
+                y={padTop}
+                width={slotWidth}
+                height={plotHeight}
+                fill="rgba(255,255,255,0.04)"
+              />
+            )}
+            <line
+              x1={cx}
+              y1={yH}
+              x2={cx}
+              y2={yL}
+              stroke={isBull ? '#38BDF8' : '#F87171'}
+              strokeWidth="1.6"
+            />
+            <rect
+              x={cx - candleW / 2}
+              y={bodyTop}
+              width={candleW}
+              height={bodyH}
+              rx="1.5"
+              fill={isBull ? '#2563EB' : '#EF4444'}
+              stroke={isBull ? '#60A5FA' : '#FCA5A5'}
+              strokeWidth="0.8"
+            />
+            {/* Time labels on X-axis every 6 bars */}
+            {idx % 6 === 0 && (
+              <text
+                x={cx}
+                y={svgHeight - 12}
+                textAnchor="middle"
+                fill="#64748B"
+                fontSize="9.5"
+                fontFamily="monospace"
+              >
+                {formatTimeLabel(c.time, selectedTf)}
+              </text>
+            )}
+          </g>
+        );
+      })}
+
+      {/* Horizontal Level Lines: TP2, TP1, Entry, Stop Loss */}
+      {[
+        {
+          id: 'tp2',
+          label: `TP2 ${formatSignalPrice(tp2, signal.asset)}`,
+          y: yTp2,
+          stroke: '#10B981',
+          badgeBg: '#065F46',
+          badgeText: '#ECFDF5',
+        },
+        {
+          id: 'tp1',
+          label: `TP1 ${formatSignalPrice(tp1, signal.asset)}`,
+          y: yTp1,
+          stroke: '#38BDF8',
+          badgeBg: '#1E3A8A',
+          badgeText: '#EFF6FF',
+        },
+        {
+          id: 'entry',
+          label: `ENTRY ${formatSignalPrice(entryPrice, signal.asset)}`,
+          y: yEntry,
+          stroke: '#F59E0B',
+          badgeBg: '#78350F',
+          badgeText: '#FEF3C7',
+        },
+        {
+          id: 'sl',
+          label: `SL ${formatSignalPrice(stopLoss, signal.asset)}`,
+          y: ySl,
+          stroke: '#EF4444',
+          badgeBg: '#7F1D1D',
+          badgeText: '#FEE2E2',
+        },
+      ].map((lvl) => (
+        <g key={`lvl-${idSuffix}-${lvl.id}`}>
+          <line
+            x1={padLeft}
+            y1={lvl.y}
+            x2={svgWidth - padRight}
+            y2={lvl.y}
+            stroke={lvl.stroke}
+            strokeWidth="1.6"
+            strokeDasharray="6 4"
+          />
+          <rect
+            x={svgWidth - padRight + 4}
+            y={lvl.y - 9}
+            width={padRight - 8}
+            height="18"
+            rx="4"
+            fill={lvl.badgeBg}
+            stroke={lvl.stroke}
+            strokeWidth="1.2"
+          />
+          <text
+            x={svgWidth - padRight + 8}
+            y={lvl.y + 3.5}
+            fill={lvl.badgeText}
+            fontSize="9.2"
+            fontFamily="monospace"
+            fontWeight="bold"
+          >
+            {lvl.label}
+          </text>
+        </g>
+      ))}
+
+      {/* Projected Trajectory Polyline & Waypoint Nodes */}
+      {pathPoints.length >= 2 && (
+        <g>
+          {/* Glow under path */}
+          <polyline
+            fill="none"
+            stroke="rgba(245, 158, 11, 0.25)"
+            strokeWidth="7"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            points={pathPoints
+              .map((pt, idx) => `${pathIndexToX(idx)},${priceToY(pt.value)}`)
+              .join(' ')}
+          />
+          {/* Crisp Dashed Forecast Line */}
+          <polyline
+            fill="none"
+            stroke="#F59E0B"
+            strokeWidth="3"
+            strokeDasharray="7 5"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            points={pathPoints
+              .map((pt, idx) => `${pathIndexToX(idx)},${priceToY(pt.value)}`)
+              .join(' ')}
+          />
+
+          {pathPoints.map((pt, idx) => {
+            const px = pathIndexToX(idx);
+            const py = priceToY(pt.value);
+            const isLast = idx === pathPoints.length - 1;
+            const isTp1Node = idx === 3;
+            const dotFill = isLast
+              ? '#10B981'
+              : isTp1Node
+              ? '#38BDF8'
+              : '#F59E0B';
+            const labelY =
+              idx % 2 === 0
+                ? Math.max(padTop + 16, py - 14)
+                : Math.min(padTop + plotHeight - 8, py + 20);
+
+            return (
+              <g key={`proj-node-${idSuffix}-${idx}`}>
+                <circle
+                  cx={px}
+                  cy={py}
+                  r={isLast || isTp1Node ? 5.5 : 4.5}
+                  fill={dotFill}
+                  stroke="#0F172A"
+                  strokeWidth="2"
+                />
+                {pt.label && (
+                  <text
+                    x={px}
+                    y={labelY}
+                    textAnchor="middle"
+                    fill="#F8FAFC"
+                    fontSize="9.5"
+                    fontFamily="monospace"
+                    fontWeight="bold"
+                  >
+                    {pt.label}
+                  </text>
+                )}
+                {idx > 0 && (
+                  <text
+                    x={px}
+                    y={svgHeight - 12}
+                    textAnchor="middle"
+                    fill="#93C5FD"
+                    fontSize="9"
+                    fontFamily="monospace"
+                  >
+                    {formatTimeLabel(pt.time, selectedTf)}
+                  </text>
+                )}
+              </g>
+            );
+          })}
+        </g>
+      )}
+    </svg>
+  );
+
   return (
     <div className="saas-card rounded-2xl p-5 space-y-4">
       {/* Header Row with Timeframe Switcher (1M, 5M, 15M, 30M, 1H, 4H, 1D, 1W) & Download Screenshot CTA */}
@@ -684,329 +1124,26 @@ export default function MultiTimeframeProjectionChart({
       </div>
 
       {/* Interactive SVG Candlestick + Future Forecast Canvas */}
-      <div className="relative rounded-2xl border border-[#1E293B] bg-[#0F172A] overflow-hidden shadow-inner">
-        <svg
-          viewBox={`0 0 ${svgWidth} ${svgHeight}`}
-          className="w-full h-auto block select-none"
-          role="img"
-          aria-label={`Interactive ${selectedTf} market projection chart for ${signal.asset}`}
-        >
-          <defs>
-            <linearGradient id="forecastRewardZone" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor="#10B981" stopOpacity="0.20" />
-              <stop offset="100%" stopColor="#1D4ED8" stopOpacity="0.10" />
-            </linearGradient>
-            <linearGradient id="forecastRiskZone" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor="#EF4444" stopOpacity="0.22" />
-              <stop offset="100%" stopColor="#EF4444" stopOpacity="0.08" />
-            </linearGradient>
-          </defs>
+      <div
+        onClick={handleOpenLightbox}
+        role="button"
+        tabIndex={0}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            handleOpenLightbox();
+          }
+        }}
+        title="Click to zoom projection chart"
+        className="group relative rounded-2xl border border-[#1E293B] bg-[#0F172A] overflow-hidden shadow-inner cursor-zoom-in"
+      >
+        {renderProjectionSvg('inline')}
 
-          {/* Forecast Future Horizon Shaded Background */}
-          <rect
-            x={lastCandleX}
-            y={padTop}
-            width={svgWidth - padRight - lastCandleX}
-            height={plotHeight}
-            fill="rgba(30, 58, 138, 0.16)"
-          />
-
-          {/* Vertical Divider Line between Historical Candles & Future Forecast Zone */}
-          <line
-            x1={lastCandleX}
-            y1={padTop}
-            x2={lastCandleX}
-            y2={padTop + plotHeight}
-            stroke="#60A5FA"
-            strokeWidth="1.5"
-            strokeDasharray="4 4"
-          />
-          <rect
-            x={lastCandleX + 8}
-            y={padTop + 6}
-            width="154"
-            height="18"
-            rx="4"
-            fill="#1E3A8A"
-            stroke="#3B82F6"
-            strokeWidth="1"
-          />
-          <text
-            x={lastCandleX + 16}
-            y={padTop + 18}
-            fill="#DBEAFE"
-            fontSize="9.5"
-            fontFamily="monospace"
-            fontWeight="bold"
-          >
-            {selectedTf} PROJECTED PATH →
-          </text>
-
-          {/* Shaded Reward Band (Entry to TP2) & Risk Band (Entry to SL) in Future Zone */}
-          <rect
-            x={lastCandleX}
-            y={Math.min(yEntry, yTp2)}
-            width={svgWidth - padRight - lastCandleX}
-            height={Math.max(2, Math.abs(yTp2 - yEntry))}
-            fill="url(#forecastRewardZone)"
-          />
-          <rect
-            x={lastCandleX}
-            y={Math.min(yEntry, ySl)}
-            width={svgWidth - padRight - lastCandleX}
-            height={Math.max(2, Math.abs(ySl - yEntry))}
-            fill="url(#forecastRiskZone)"
-          />
-
-          {/* Horizontal Price Grid Lines & Right Y-Axis Ticks */}
-          {priceTicks.map((tick, idx) => {
-            const y = priceToY(tick);
-            return (
-              <g key={`grid-${idx}`}>
-                <line
-                  x1={padLeft}
-                  y1={y}
-                  x2={svgWidth - padRight}
-                  y2={y}
-                  stroke="rgba(148, 163, 184, 0.14)"
-                  strokeWidth="1"
-                />
-                <text
-                  x={svgWidth - padRight + 10}
-                  y={y + 4}
-                  fill="#94A3B8"
-                  fontSize="10.5"
-                  fontFamily="monospace"
-                  fontWeight="600"
-                >
-                  {formatSignalPrice(tick, signal.asset)}
-                </text>
-              </g>
-            );
-          })}
-
-          {/* Right Y-Axis Border */}
-          <line
-            x1={svgWidth - padRight}
-            y1={padTop}
-            x2={svgWidth - padRight}
-            y2={padTop + plotHeight}
-            stroke="#334155"
-            strokeWidth="1.5"
-          />
-
-          {/* Historical Candlesticks */}
-          {candles.map((c, idx) => {
-            const cx = candleIndexToX(idx);
-            const yO = priceToY(c.open);
-            const yC = priceToY(c.close);
-            const yH = priceToY(c.high);
-            const yL = priceToY(c.low);
-            const isBull = c.close >= c.open;
-            const bodyTop = Math.min(yO, yC);
-            const bodyH = Math.max(2.5, Math.abs(yC - yO));
-            const candleW = Math.max(4, slotWidth * 0.62);
-            const isHovered = hoverIndex === idx;
-
-            return (
-              <g
-                key={`candle-${c.time}-${idx}`}
-                onMouseEnter={() => setHoverIndex(idx)}
-                onMouseLeave={() => setHoverIndex(null)}
-                className="cursor-crosshair"
-              >
-                {isHovered && (
-                  <rect
-                    x={cx - slotWidth / 2}
-                    y={padTop}
-                    width={slotWidth}
-                    height={plotHeight}
-                    fill="rgba(255,255,255,0.04)"
-                  />
-                )}
-                <line
-                  x1={cx}
-                  y1={yH}
-                  x2={cx}
-                  y2={yL}
-                  stroke={isBull ? '#38BDF8' : '#F87171'}
-                  strokeWidth="1.6"
-                />
-                <rect
-                  x={cx - candleW / 2}
-                  y={bodyTop}
-                  width={candleW}
-                  height={bodyH}
-                  rx="1.5"
-                  fill={isBull ? '#2563EB' : '#EF4444'}
-                  stroke={isBull ? '#60A5FA' : '#FCA5A5'}
-                  strokeWidth="0.8"
-                />
-                {/* Time labels on X-axis every 6 bars */}
-                {idx % 6 === 0 && (
-                  <text
-                    x={cx}
-                    y={svgHeight - 12}
-                    textAnchor="middle"
-                    fill="#64748B"
-                    fontSize="9.5"
-                    fontFamily="monospace"
-                  >
-                    {formatTimeLabel(c.time, selectedTf)}
-                  </text>
-                )}
-              </g>
-            );
-          })}
-
-          {/* Horizontal Level Lines: TP2, TP1, Entry, Stop Loss */}
-          {[
-            {
-              id: 'tp2',
-              label: `TP2 ${formatSignalPrice(tp2, signal.asset)}`,
-              y: yTp2,
-              stroke: '#10B981',
-              badgeBg: '#065F46',
-              badgeText: '#ECFDF5',
-            },
-            {
-              id: 'tp1',
-              label: `TP1 ${formatSignalPrice(tp1, signal.asset)}`,
-              y: yTp1,
-              stroke: '#38BDF8',
-              badgeBg: '#1E3A8A',
-              badgeText: '#EFF6FF',
-            },
-            {
-              id: 'entry',
-              label: `ENTRY ${formatSignalPrice(entryPrice, signal.asset)}`,
-              y: yEntry,
-              stroke: '#F59E0B',
-              badgeBg: '#78350F',
-              badgeText: '#FEF3C7',
-            },
-            {
-              id: 'sl',
-              label: `SL ${formatSignalPrice(stopLoss, signal.asset)}`,
-              y: ySl,
-              stroke: '#EF4444',
-              badgeBg: '#7F1D1D',
-              badgeText: '#FEE2E2',
-            },
-          ].map((lvl) => (
-            <g key={`lvl-${lvl.id}`}>
-              <line
-                x1={padLeft}
-                y1={lvl.y}
-                x2={svgWidth - padRight}
-                y2={lvl.y}
-                stroke={lvl.stroke}
-                strokeWidth="1.6"
-                strokeDasharray="6 4"
-              />
-              <rect
-                x={svgWidth - padRight + 4}
-                y={lvl.y - 9}
-                width={padRight - 8}
-                height="18"
-                rx="4"
-                fill={lvl.badgeBg}
-                stroke={lvl.stroke}
-                strokeWidth="1.2"
-              />
-              <text
-                x={svgWidth - padRight + 8}
-                y={lvl.y + 3.5}
-                fill={lvl.badgeText}
-                fontSize="9.2"
-                fontFamily="monospace"
-                fontWeight="bold"
-              >
-                {lvl.label}
-              </text>
-            </g>
-          ))}
-
-          {/* Projected Trajectory Polyline & Waypoint Nodes */}
-          {pathPoints.length >= 2 && (
-            <g>
-              {/* Glow under path */}
-              <polyline
-                fill="none"
-                stroke="rgba(245, 158, 11, 0.25)"
-                strokeWidth="7"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                points={pathPoints
-                  .map((pt, idx) => `${pathIndexToX(idx)},${priceToY(pt.value)}`)
-                  .join(' ')}
-              />
-              {/* Crisp Dashed Forecast Line */}
-              <polyline
-                fill="none"
-                stroke="#F59E0B"
-                strokeWidth="3"
-                strokeDasharray="7 5"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                points={pathPoints
-                  .map((pt, idx) => `${pathIndexToX(idx)},${priceToY(pt.value)}`)
-                  .join(' ')}
-              />
-
-              {pathPoints.map((pt, idx) => {
-                const px = pathIndexToX(idx);
-                const py = priceToY(pt.value);
-                const isLast = idx === pathPoints.length - 1;
-                const isTp1Node = idx === 3;
-                const dotFill = isLast
-                  ? '#10B981'
-                  : isTp1Node
-                  ? '#38BDF8'
-                  : '#F59E0B';
-                const labelY = idx % 2 === 0 ? Math.max(padTop + 16, py - 14) : Math.min(padTop + plotHeight - 8, py + 20);
-
-                return (
-                  <g key={`proj-node-${idx}`}>
-                    <circle
-                      cx={px}
-                      cy={py}
-                      r={isLast || isTp1Node ? 5.5 : 4.5}
-                      fill={dotFill}
-                      stroke="#0F172A"
-                      strokeWidth="2"
-                    />
-                    {pt.label && (
-                      <text
-                        x={px}
-                        y={labelY}
-                        textAnchor="middle"
-                        fill="#F8FAFC"
-                        fontSize="9.5"
-                        fontFamily="monospace"
-                        fontWeight="bold"
-                      >
-                        {pt.label}
-                      </text>
-                    )}
-                    {idx > 0 && (
-                      <text
-                        x={px}
-                        y={svgHeight - 12}
-                        textAnchor="middle"
-                        fill="#93C5FD"
-                        fontSize="9"
-                        fontFamily="monospace"
-                      >
-                        {formatTimeLabel(pt.time, selectedTf)}
-                      </text>
-                    )}
-                  </g>
-                );
-              })}
-            </g>
-          )}
-        </svg>
+        {/* Subtle Hover Hint Badge ("Click to zoom") */}
+        <div className="pointer-events-none absolute bottom-3 right-3 inline-flex items-center gap-1.5 rounded-lg border border-white/15 bg-[#0F172A]/85 px-2.5 py-1 text-[11px] font-mono font-semibold text-[#93C5FD] opacity-75 group-hover:opacity-100 group-hover:border-[#3B82F6]/60 transition-opacity shadow-md">
+          <Maximize2 className="w-3 h-3" />
+          <span>Click to zoom</span>
+        </div>
 
         {/* Hover OHLC Tooltip Overlay */}
         {hoverIndex !== null && candles[hoverIndex] && (
@@ -1023,6 +1160,127 @@ export default function MultiTimeframeProjectionChart({
           </div>
         )}
       </div>
+
+      {/* Full-Screen Lightbox Modal for Zooming & Panning the Projection Chart */}
+      {isLightboxOpen && (
+        <div
+          className="fixed inset-0 z-50 flex flex-col bg-[#0F172A]/95 backdrop-blur-sm"
+          role="dialog"
+          aria-modal="true"
+          aria-label={`${signal.asset} ${selectedTf} Multi-Timeframe Market Projection Chart Fullscreen View`}
+          onClick={handleCloseLightbox}
+        >
+          {/* Lightbox Top Toolbar */}
+          <div
+            className="flex flex-wrap items-center justify-between gap-3 border-b border-[#1E293B] bg-[#0F172A] px-4 py-3 text-white"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex flex-wrap items-center gap-2.5">
+              <BarChart3 className="w-4 h-4 text-[#38BDF8]" />
+              <span className="font-mono text-xs sm:text-sm font-bold uppercase tracking-wider">
+                {signal.asset} — {selectedTf} Market Projection Chart
+              </span>
+              <span className="hidden sm:inline-block text-[11px] font-mono text-[#94A3B8]">
+                (Scroll wheel to zoom • Drag when zoomed to inspect Entry, SL, TP1 &amp; TP2)
+              </span>
+            </div>
+
+            <div className="flex items-center gap-1.5 font-mono text-xs">
+              <button
+                type="button"
+                onClick={handleZoomOut}
+                disabled={zoomScale <= 0.5}
+                className="inline-flex items-center gap-1 rounded-lg border border-[#334155] bg-[#1E293B] hover:bg-[#334155] px-2.5 py-1.5 font-bold text-white transition-colors disabled:opacity-40"
+                title="Zoom Out (-)"
+                aria-label="Zoom Out"
+              >
+                <ZoomOut className="w-3.5 h-3.5" />
+                <span>-</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={handleResetZoom}
+                className="inline-flex items-center gap-1 rounded-lg border border-[#334155] bg-[#1E293B] hover:bg-[#334155] px-2.5 py-1.5 font-bold text-[#93C5FD] transition-colors"
+                title="Reset Zoom to 100%"
+                aria-label="Reset Zoom"
+              >
+                <RotateCcw className="w-3 h-3" />
+                <span>{Math.round(zoomScale * 100)}%</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={handleZoomIn}
+                disabled={zoomScale >= 4}
+                className="inline-flex items-center gap-1 rounded-lg border border-[#334155] bg-[#1E293B] hover:bg-[#334155] px-2.5 py-1.5 font-bold text-white transition-colors disabled:opacity-40"
+                title="Zoom In (+)"
+                aria-label="Zoom In"
+              >
+                <ZoomIn className="w-3.5 h-3.5" />
+                <span>+</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={handleCloseLightbox}
+                className="ml-2 inline-flex items-center gap-1 rounded-lg border border-[#475569] bg-[#1E293B] hover:bg-[#EF4444] hover:border-[#EF4444] px-2.5 py-1.5 font-bold text-white transition-colors"
+                title="Close (Esc)"
+                aria-label="Close fullscreen chart"
+              >
+                <X className="w-4 h-4" />
+                <span className="hidden sm:inline">Close</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Interactive Zoom & Pan Viewport */}
+          <div
+            ref={lightboxViewportRef}
+            className={`relative flex-1 flex items-center justify-center overflow-hidden p-4 sm:p-8 select-none ${
+              zoomScale > 1
+                ? isDragging
+                  ? 'cursor-grabbing'
+                  : 'cursor-grab'
+                : 'cursor-default'
+            }`}
+            onMouseDown={handleMouseDown}
+            onMouseMove={handleMouseMove}
+            onMouseUp={handleMouseUpOrLeave}
+            onMouseLeave={handleMouseUpOrLeave}
+          >
+            <div
+              onClick={(e) => e.stopPropagation()}
+              style={{
+                transform: `translate3d(${panOffset.x}px, ${panOffset.y}px, 0) scale(${zoomScale})`,
+                transformOrigin: 'center center',
+                transition: isDragging ? 'none' : 'transform 120ms ease-out',
+              }}
+              className="w-full max-w-6xl rounded-2xl border border-[#334155] bg-[#0F172A] shadow-2xl overflow-hidden"
+            >
+              {renderProjectionSvg('lightbox')}
+            </div>
+
+            {/* Hover OHLC Tooltip inside Lightbox */}
+            {hoverIndex !== null && candles[hoverIndex] && (
+              <div
+                onClick={(e) => e.stopPropagation()}
+                className="pointer-events-none absolute top-4 left-4 rounded-lg border border-white/15 bg-[#0F172A]/95 px-3 py-1.5 text-xs font-mono text-white shadow-lg"
+              >
+                <span className="text-[#93C5FD] font-bold mr-2">
+                  {selectedTf} • {formatTimeLabel(candles[hoverIndex].time, selectedTf)} UTC
+                </span>
+                <span>O: {formatSignalPrice(candles[hoverIndex].open, signal.asset)}</span>{' '}
+                <span>H: {formatSignalPrice(candles[hoverIndex].high, signal.asset)}</span>{' '}
+                <span>L: {formatSignalPrice(candles[hoverIndex].low, signal.asset)}</span>{' '}
+                <span className="font-bold text-[#F59E0B]">
+                  C: {formatSignalPrice(candles[hoverIndex].close, signal.asset)}
+                </span>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Timeframe Forecast Note & Waypoints Strip */}
       <div className="rounded-xl border border-[#BFDBFE] bg-[#EFF6FF]/65 p-3.5 space-y-2.5">
