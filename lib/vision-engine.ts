@@ -69,15 +69,23 @@ STAGE 3 — MULTI-FACTOR CONFLUENCE GATE & MANDATORY EXECUTION LEVELS:
   * Confluence 3: Unmitigated Institutional Array (Bullish FVG / Demand OB in Discount for BUY; Bearish FVG / Supply OB in Premium for SELL; or clean horizontal flip zone on line charts).
 - CRITICAL MANDATE: You MUST ALWAYS provide concrete, non-zero numeric values for "entry_price", "stop_loss", "take_profit_1", "take_profit_2", and "take_profit_3" anchored to the chart's visible Y-axis price scale. NEVER output 0, null, or "N/A" for entry_price, stop_loss, take_profit_1, take_profit_2, or take_profit_3.
 
-STAGE 4 — STRICT DIRECTIONAL GEOMETRY & Y-COORDINATE ORDERING:
+STAGE 4 — STRICT DIRECTIONAL GEOMETRY, TIGHT PROXIMITY & QUICK-PROFIT RISK ENGINE:
 - Remember that on image coordinates, Y = 0 is the TOP edge (HIGHEST price) and Y = 100 is the BOTTOM edge (LOWEST price).
+- TIGHT PROXIMITY & QUICK-PROFIT GUARDRAILS (MANDATORY — NEVER OUTPUT DISTANT SWING TARGETS OR WIDE STOP LOSSES):
+  * Current Price Anchor: Always anchor all calculations strictly to the exact "current_market_price" and 14-period ATR of the selected timeframe.
+  * Close Entry Rule: "entry_price" MUST be immediate market execution or within 0.3x ATR of "current_market_price" (NEVER wait for a distant price level).
+  * Tight Stop Loss Rule: Cap "stop_loss" distance to a realistic intraday/scalp range of 0.8x to 1.5x ATR from "entry_price" (just beyond the nearest micro-swing high/low).
+  * Quick, Realistic Take Profit Rule: Optimize for high-probability, achievable profits rather than massive targets:
+    - "take_profit_1" (Primary Quick Profit): 1.0x to 1.5x the Stop Loss distance (R:R ~ 1:1.2 to 1:1.5).
+    - "take_profit_2" (Extended Scalp Target): Capped at 2.0x to 2.5x the Stop Loss distance (R:R max 1:2.5).
+    - "take_profit_3" (Optional Runner): Capped at 3.0x the Stop Loss distance.
 - If "setup_type" is "BUY SETUP" ("bias": "BULLISH"):
   * Numeric prices MUST satisfy: stop_loss < entry_price < take_profit_1 < take_profit_2 < take_profit_3
   * Normalized Y percentages (0-100) MUST satisfy: tp3_y < tp2_y < tp1_y < entry_y < stop_loss_y
 - If "setup_type" is "SELL SETUP" ("bias": "BEARISH"):
   * Numeric prices MUST satisfy: stop_loss > entry_price > take_profit_1 > take_profit_2 > take_profit_3
   * Normalized Y percentages (0-100) MUST satisfy: stop_loss_y < entry_y < tp1_y < tp2_y < tp3_y
-- Calculate "risk_to_reward" mathematically as 1 : ((take_profit_1 - entry_price) / (entry_price - stop_loss)), and ensure "stop_loss" accounts for structural invalidation plus a 0.5x ATR volatility buffer.
+- Calculate "risk_to_reward" mathematically as 1 : ((take_profit_1 - entry_price) / (entry_price - stop_loss)).
 
 STAGE 5 — TRAJECTORY PATH LOCKING:
 - "prediction_path" must be a 3-point array [{x, y, label}] progressing strictly left-to-right (x0 < x1 < x2):
@@ -1752,35 +1760,22 @@ function buildQuantitativeFallbackAnalysis(
   const fvg = quant.unmitigatedFVGs[quant.unmitigatedFVGs.length - 1];
   const ob = quant.activeOrderBlocks[quant.activeOrderBlocks.length - 1];
 
-  const entryPrice = roundToPrecision(
-    fvg
-      ? fvg.midpoint
-      : isBearish
-      ? quant.fibonacci.bearishPremiumOTE.ote618
-      : quant.fibonacci.bullishDiscountOTE.ote618,
-    decimals
-  );
+  const entryPrice = roundToPrecision(quant.currentPrice, decimals);
 
   const stopLoss = isBearish
-    ? roundToPrecision(
-        Math.max(entryPrice + atr * 1.2, quant.structure.swingHigh) + halfAtr,
-        decimals
-      )
-    : roundToPrecision(
-        Math.min(entryPrice - atr * 1.2, quant.structure.swingLow) - halfAtr,
-        decimals
-      );
+    ? roundToPrecision(entryPrice + atr * 1.1, decimals)
+    : roundToPrecision(entryPrice - atr * 1.1, decimals);
 
   const riskDist = Math.abs(entryPrice - stopLoss);
   const takeProfit1 = isBearish
+    ? roundToPrecision(entryPrice - riskDist * 1.3, decimals)
+    : roundToPrecision(entryPrice + riskDist * 1.3, decimals);
+  const takeProfit2 = isBearish
     ? roundToPrecision(entryPrice - riskDist * 2.2, decimals)
     : roundToPrecision(entryPrice + riskDist * 2.2, decimals);
-  const takeProfit2 = isBearish
-    ? roundToPrecision(entryPrice - riskDist * 3.6, decimals)
-    : roundToPrecision(entryPrice + riskDist * 3.6, decimals);
   const takeProfit3 = isBearish
-    ? roundToPrecision(entryPrice - riskDist * 5.0, decimals)
-    : roundToPrecision(entryPrice + riskDist * 5.0, decimals);
+    ? roundToPrecision(entryPrice - riskDist * 3.0, decimals)
+    : roundToPrecision(entryPrice + riskDist * 3.0, decimals);
 
   const rawMock: Record<string, any> = {
     asset: quant.asset,
@@ -1899,7 +1894,8 @@ export async function analyzeChartImage(
       quantReport,
       macroNews,
       memoryContext.historicalPerformanceNote,
-      mtfData.source
+      mtfData.source,
+      mtfData
     ).validatedSignal;
   }
 
@@ -2021,6 +2017,7 @@ export async function analyzeChartImage(
     quantReport,
     macroNews,
     memoryContext.historicalPerformanceNote,
-    mtfData.source
+    mtfData.source,
+    mtfData
   ).validatedSignal;
 }

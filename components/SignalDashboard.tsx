@@ -3,6 +3,7 @@
 import React, { useState } from 'react';
 import { SMCSignalOutput, formatSignalPrice } from '@/lib/types';
 import InteractiveChartOverlay from './InteractiveChartOverlay';
+import MultiTimeframeProjectionChart from './MultiTimeframeProjectionChart';
 import {
   TrendingUp,
   TrendingDown,
@@ -341,14 +342,14 @@ export default function SignalDashboard({
                   Stop Loss (SL)
                 </span>
                 <span className="rounded bg-[#EF4444] px-1.5 py-0.5 font-mono text-[9px] font-bold text-white">
-                  0.5x ATR
+                  0.8x-1.5x ATR
                 </span>
               </div>
               <p className="mt-1 font-mono text-base sm:text-lg font-extrabold text-[#EF4444]">
                 {formatSignalPrice(stopLossNum, signal.asset)}
               </p>
               <p className="mt-0.5 text-[10px] font-mono text-[#475569]">
-                Structural Invalidation
+                Tight Micro-Swing SL
               </p>
             </div>
 
@@ -423,6 +424,9 @@ export default function SignalDashboard({
             imageUrl={chartImage || signal.chartImageUrl || ''}
             signal={signal}
           />
+
+          {/* Interactive Multi-Timeframe Market Projection Chart (5M, 15M, 1H, 4H) with Downloadable Screenshot */}
+          <MultiTimeframeProjectionChart signal={signal} />
 
           {/* 1. Vision AI Technical Summary */}
           <div className="saas-card rounded-2xl p-5 space-y-3">
@@ -583,7 +587,7 @@ export default function SignalDashboard({
                   color: '#EF4444',
                   badge: '#EF4444',
                   yPct: stopLossY,
-                  sub: 'Invalidation + 0.5x ATR',
+                  sub: 'Tight 0.8x-1.5x ATR',
                 },
                 {
                   label: 'Take Profit 1 (TP1)',

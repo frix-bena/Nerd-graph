@@ -213,6 +213,7 @@ export async function POST(request: NextRequest) {
       trade_execution: result.trade_execution,
       visual_proof_annotations: result.visual_proof_annotations,
       accuracy_verification: result.accuracy_verification,
+      multiTimeframeForecast: result.multiTimeframeForecast,
       chartImageUrl: imageData || undefined,
     };
 
@@ -272,6 +273,7 @@ export async function POST(request: NextRequest) {
             trading_tools_analysis: analysis.trading_tools_analysis,
             trade_execution: analysis.trade_execution,
             visual_proof_annotations: analysis.visual_proof_annotations,
+            multiTimeframeForecast: analysis.multiTimeframeForecast,
           }),
           status: 'ACTIVE',
           mt5Executed: false,
@@ -285,6 +287,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       success: true,
       analysis,
+      multiTimeframeForecast: analysis.multiTimeframeForecast,
       signalId,
       chartImageUrl: imageData || undefined,
     });

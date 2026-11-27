@@ -100,6 +100,33 @@ export interface AccuracyVerification {
   verification_checks: string[];
 }
 
+export type ForecastTimeframe = '5M' | '15M' | '1H' | '4H';
+
+export interface ForecastHistoricalCandle {
+  time: number;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+}
+
+export interface ForecastProjectedPoint {
+  time: number;
+  value: number;
+  label?: string;
+}
+
+export interface TimeframeForecastProjection {
+  historicalCandles: ForecastHistoricalCandle[];
+  projectedPath: ForecastProjectedPoint[];
+  bias: MarketBias;
+  shortNote: string;
+}
+
+export type MultiTimeframeForecast = {
+  [timeframe in ForecastTimeframe]: TimeframeForecastProjection;
+};
+
 export interface InstitutionalSMCAnalysis {
   asset: string;
   timeframe: string;
@@ -122,6 +149,7 @@ export interface InstitutionalSMCAnalysis {
   trade_execution: TradeExecution;
   visual_proof_annotations: VisualProofAnnotations;
   accuracy_verification?: AccuracyVerification;
+  multiTimeframeForecast?: MultiTimeframeForecast;
 }
 
 export interface TradeAnalysis extends InstitutionalSMCAnalysis {
